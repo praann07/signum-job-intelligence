@@ -4,16 +4,13 @@ Revision ID: 002
 Revises: 001
 """
 
-from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import TIMESTAMP
 
 revision: str = "002"
 down_revision: str = "001"
-branch_labels: Union[str, list[str], None] = None
-depends_on: Union[str, list[str], None] = None
+branch_labels: str | list[str] | None = None
+depends_on: str | list[str] | None = None
 
 
 def upgrade() -> None:

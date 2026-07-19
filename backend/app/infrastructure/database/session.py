@@ -1,14 +1,18 @@
 from asyncio import get_running_loop
-from typing import Optional
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.core.config import get_settings
 
 _settings = get_settings()
 
-_engine: Optional[AsyncEngine] = None
-_engine_loop: Optional[object] = None
+_engine: AsyncEngine | None = None
+_engine_loop: object | None = None
 
 
 def get_engine() -> AsyncEngine:

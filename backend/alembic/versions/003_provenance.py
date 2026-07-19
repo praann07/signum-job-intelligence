@@ -4,15 +4,15 @@ Revision ID: 003
 Revises: 002
 """
 
-from typing import Sequence, Union
+
+import sqlalchemy as sa
 
 from alembic import op
-import sqlalchemy as sa
 
 revision: str = "003"
 down_revision: str = "002"
-branch_labels: Union[str, list[str], None] = None
-depends_on: Union[str, list[str], None] = None
+branch_labels: str | list[str] | None = None
+depends_on: str | list[str] | None = None
 
 
 def upgrade() -> None:

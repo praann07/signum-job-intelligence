@@ -104,10 +104,18 @@ async def ingest_raw(session: AsyncSession, bm: BitmapIndex, p: RawPosting) -> s
 async def run_pipeline(session: AsyncSession) -> dict[str, object]:
     bm = BitmapIndex(get_settings().redis_url)
     sources: list[RawPosting] = []
-    sources += await fetch_remotive()
-    sources += await fetch_arbeitnow()
-    sources += await fetch_hackernews()
-    sources += await fetch_naukri(get_settings().firecrawl_api_key)
+    # ponytail: one failing source must not abort the whole pipeline. The
+    # scheduler runs unattended, so we collect what we can and keep going.
+    for name, coro in (
+        ("remotive", fetch_remotive()),
+        ("arbeitnow", fetch_arbeitnow()),
+        ("hackernews", fetch_hackernews()),
+        ("naukri", fetch_naukri(get_settings().firecrawl_api_key)),
+    ):
+        try:
+            sources += await coro
+        except Exception as e:  # noqa: BLE001
+            print(f"[pipeline] source {name} failed: {e}")
 
     inserted = skipped = 0
     for p in sources:

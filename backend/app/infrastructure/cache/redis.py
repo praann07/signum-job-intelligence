@@ -1,11 +1,10 @@
 from asyncio import get_running_loop
-from typing import Optional
 
 from redis.asyncio import Redis as AsyncRedis
 
 from app.core.config import get_settings
 
-_redis: Optional[AsyncRedis] = None
+_redis: AsyncRedis | None = None
 _redis_loop = None
 
 

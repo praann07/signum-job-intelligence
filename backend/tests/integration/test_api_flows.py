@@ -140,9 +140,7 @@ async def test_bitmap_rebuild_from_db(
     api_client: AsyncClient, auth_headers: dict[str, str], db_session
 ):
     """Bitmap index must be reconstructable from the DB after Redis loss."""
-    from sqlalchemy import text
 
-    from app.infrastructure.database.session import async_session_factory
     from app.infrastructure.indexing.bitmap import BitmapIndex
 
     # Ingest some data

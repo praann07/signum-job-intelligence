@@ -68,7 +68,11 @@ class BitmapIndex:
         limit: int = 50,
     ) -> list[dict[str, object]]:
         # Filter dict keys the API uses -> bitmap field codes used at write time.
-        field_code: dict[str, str] = {"seniority": "sen", "country": "country", "company_size": "size"}
+        field_code: dict[str, str] = {
+            "seniority": "sen",
+            "country": "country",
+            "company_size": "size",
+        }
         keys: list[str] = []
         for s in skills or []:
             keys.append(self._key("skill", s.lower()))
@@ -150,7 +154,6 @@ class BitmapIndex:
         """
         from sqlalchemy import text
 
-        from app.infrastructure.database.models import Employer
 
         # ponytail: clear existing bitmap keys first so a partial rebuild can't
         # leave stale bits behind.
@@ -196,7 +199,11 @@ class BitmapIndex:
                 _uuid(eid),
                 [str(s) for s in skills],
                 seniority=str(data["seniority"]) if data["seniority"] else None,
-                country=str(data["country"]) if data["country"] not in (None, "unknown", "remote", "eu") else None,
+                country=(
+                    str(data["country"])
+                    if data["country"] not in (None, "unknown", "remote", "eu")
+                    else None
+                ),
                 company_size=str(data["size"]) if data["size"] not in (None, "unknown") else None,
                 title=str(data["title"]) if data["title"] else None,
                 source=str(data["source"]) if data["source"] else None,
@@ -206,7 +213,7 @@ class BitmapIndex:
         return count
 
 
-def _uuid(eid: str) -> "UUID":
+def _uuid(eid: str) -> UUID:
     from uuid import UUID
 
     return UUID(eid)

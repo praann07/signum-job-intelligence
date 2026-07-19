@@ -4,17 +4,17 @@ Revision ID: 001
 Revises:
 Create Date: 2026-07-14
 """
-from typing import Sequence, Union
+
+import sqlalchemy as sa
+from sqlalchemy import TIMESTAMP
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 
 from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
-from sqlalchemy import TIMESTAMP
 
 revision: str = "001"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, list[str], None] = None
-depends_on: Union[str, list[str], None] = None
+down_revision: str | None = None
+branch_labels: str | list[str] | None = None
+depends_on: str | list[str] | None = None
 
 
 def upgrade() -> None:
