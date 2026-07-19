@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signum — Skill Co-occurrence Network</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+  :root{
+    --bg:#0A0E0C; --panel:#121710; --border:#2A332A; --border-bright:#3B463A;
+    --amber:#FFB000; --green:#5FD068; --text:#D8E0D5; --text-muted:#6B7568; --text-dim:#454E44;
+    --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden;}
+  header{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:14px 22px;background:rgba(10,14,12,.85);border-bottom:1px solid var(--border);backdrop-filter:blur(6px);}
+  .brand{font-family:var(--mono);font-weight:700;font-size:16px;letter-spacing:.03em;}
+  .brand .cur{display:inline-block;width:8px;height:13px;background:var(--amber);margin-left:5px;vertical-align:-1px;animation:blink 1.1s step-end infinite;}
+  @keyframes blink{50%{opacity:0;}}
+  .brand-sub{font-family:var(--mono);font-size:10px;color:var(--text-dim);letter-spacing:.04em;}
+  .controls{display:flex;gap:10px;align-items:center;}
+  .controls input{background:var(--panel);border:1px solid var(--border-bright);color:var(--text);font-family:var(--mono);font-size:12px;padding:7px 12px;outline:none;width:240px;}
+  .controls input:focus{border-color:var(--amber);}
+  .btn{font-family:var(--mono);font-size:12px;color:var(--bg);background:var(--amber);border:none;padding:8px 14px;cursor:pointer;}
+  .btn:hover{background:#ffc233;}
+  .btn.ghost{background:transparent;color:var(--text-muted);border:1px solid var(--border-bright);}
+  .btn.ghost:hover{color:var(--text);}
+  svg{width:100vw;height:100vh;display:block;cursor:grab;}
+  svg:active{cursor:grabbing;}
+  .link{stroke:#2A332A;stroke-opacity:.7;}
+  .node circle{fill:#121710;stroke:#5FD068;stroke-width:1.4;cursor:pointer;}
+  .node.center circle{stroke:var(--amber);stroke-width:2.2;}
+  .node text{fill:var(--text-muted);font-family:var(--mono);font-size:10px;pointer-events:none;text-anchor:middle;}
+  .node.center text{fill:var(--amber);font-weight:600;font-size:12px;}
+  #tooltip{position:fixed;pointer-events:none;background:var(--panel);border:1px solid var(--border-bright);padding:8px 12px;font-family:var(--mono);font-size:11px;color:var(--text);opacity:0;transition:opacity .12s;z-index:20;max-width:260px;}
+  #status{position:fixed;bottom:16px;left:22px;font-family:var(--mono);font-size:11px;color:var(--text-dim);}
+  #legend{position:fixed;bottom:16px;right:22px;font-family:var(--mono);font-size:10.5px;color:var(--text-dim);text-align:right;line-height:1.6;}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand">SIGNUM<span class="cur"></span></div>
+    <div class="brand-sub">SKILL CO-OCCURRENCE NETWORK · LIVE</div>
+  </div>
+  <div class="controls">
+    <input id="skill-input" placeholder="center skill, e.g. Python" />
+    <button class="btn" id="load-btn">LOAD</button>
+    <button class="btn ghost" onclick="window.close()">CLOSE</button>
+  </div>
+</header>
+<svg id="net"></svg>
+<div id="tooltip"></div>
+<div id="status">drag nodes · scroll to zoom · click a node to recenter</div>
+<div id="legend">● amber = searched skill<br>● green = co-occurring skill<br>line width = co-occurrence strength</div>
+
+<script>
+  const svg = document.getElementById('net');
+  const tooltip = document.getElementById('tooltip');
+  const statusEl = document.getElementById('status');
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  let nodes=[], links=[], sim=null, g=null;
+
+  function getParams(){ const u=new URL(location.href); return u.searchParams.get('skill') || 'Python'; }
+
+  // ponytail: single wheel listener attached once; render() resets all state
+  // (cancels old sim, clears arrays, resets zoom) so recentering never stacks.
+  let zoomK = 1;
+  svg.addEventListener('wheel', e=>{
+    e.preventDefault();
+    zoomK *= e.deltaY < 0 ? 1.1 : 0.9;
+    if(g) g.setAttribute('transform', `translate(${innerWidth/2},${innerHeight/2}) scale(${zoomK}) translate(${-innerWidth/2},${-innerHeight/2})`);
+  }, {passive:false});
+
+  async function load(skill){
+    // hard reset: kill any running sim + wipe svg + state
+    if(sim) cancelAnimationFrame(sim);
+    sim = null;
+    nodes = []; links = []; zoomK = 1;
+    svg.innerHTML = '';
+    g = null;
+    statusEl.textContent = 'loading ' + skill + '…';
+    try{
+      const d = await (await fetch('/api/v1/graph?skill='+encodeURIComponent(skill)+'&limit=40')).json();
+      nodes = (d.nodes||[]).map(n=>({id:n.id, group:n.group, x:Math.random()*innerWidth, y:Math.random()*innerHeight, fx:null, fy:null}));
+      const byId = Object.fromEntries(nodes.map(n=>[n.id,n]));
+      links = (d.links||[]).filter(l=>byId[l.source]&&byId[l.target]).map(l=>({source:byId[l.source], target:byId[l.target], weight:l.weight||1}));
+      if(!nodes.length){ statusEl.textContent='No data for "'+skill+'".'; return; }
+      statusEl.textContent = nodes.length+' skills · '+links.length+' connections';
+      render();
+    }catch(e){ statusEl.textContent='failed: '+e.message; }
+  }
+
+  // ponytail: hand-rolled force sim (no d3 dep). Repulsion + spring + center gravity.
+  function render(){
+    g = document.createElementNS(SVGNS,'g');
+    svg.appendChild(g);
+    const linkEls = links.map(l=>{
+      const el=document.createElementNS(SVGNS,'line');
+      el.setAttribute('class','link');
+      el.setAttribute('stroke-width', Math.min(5, 1+l.weight/2));
+      g.appendChild(el); return el;
+    });
+    nodes.forEach(n=>{
+      const grp=document.createElementNS(SVGNS,'g');
+      grp.setAttribute('class','node'+(n.group==='center'?' center':''));
+      const c=document.createElementNS(SVGNS,'circle');
+      c.setAttribute('r', n.group==='center'?18:6+Math.min(14,n.id.length/3));
+      const t=document.createElementNS(SVGNS,'text');
+      t.setAttribute('dy', (n.group==='center'?34:22));
+      t.textContent=n.id;
+      grp.appendChild(c); grp.appendChild(t);
+      g.appendChild(grp);
+      n._el=grp;
+      grp.addEventListener('mousemove',e=>{ tooltip.style.opacity=1; tooltip.style.left=(e.clientX+12)+'px'; tooltip.style.top=(e.clientY+12)+'px'; tooltip.textContent=n.id+(n.group==='center'?' (center)':''); });
+      grp.addEventListener('mouseleave',()=>tooltip.style.opacity=0);
+      grp.addEventListener('click',()=>{ if(n.group!=='center'){ document.getElementById('skill-input').value=n.id; load(n.id); } });
+      // drag (screen-space; no pan, so client coords map directly)
+      grp.addEventListener('mousedown',e=>{
+        e.stopPropagation();
+        const mv=ev=>{ n.fx=ev.clientX; n.fy=ev.clientY; };
+        const up=()=>{ n.fx=null; n.fy=null; window.removeEventListener('mousemove',mv); window.removeEventListener('mouseup',up); };
+        window.addEventListener('mousemove',mv); window.addEventListener('mouseup',up);
+      });
+    });
+
+    const cx=innerWidth/2, cy=innerHeight/2;
+    const center = nodes.find(n=>n.group==='center');
+    if(center){ center.x=cx; center.y=cy; }
+
+    let alpha=1;
+    function tick(){
+      for(const n of nodes){
+        if(n.fx!==null){ n.x=n.fx; n.y=n.fy; continue; } // dragged node pinned
+        const dx=cx-n.x, dy=cy-n.y;
+        n.x += dx*0.01*alpha; n.y += dy*0.01*alpha;
+      }
+      for(let i=0;i<nodes.length;i++) for(let j=i+1;j<nodes.length;j++){
+        const a=nodes[i],b=nodes[j]; const dx=a.x-b.x, dy=a.y-b.y;
+        let d2=dx*dx+dy*dy+0.01; const f=400/d2*alpha;
+        const d=Math.sqrt(d2); const ux=dx/d, uy=dy/d;
+        if(a.fx===null){ a.x+=ux*f; a.y+=uy*f; }
+        if(b.fx===null){ b.x-=ux*f; b.y-=uy*f; }
+      }
+      for(const l of links){
+        const dx=l.target.x-l.source.x, dy=l.target.y-l.source.y;
+        const d=Math.sqrt(dx*dx+dy*dy)+0.01;
+        const f=(d-90)*0.02*alpha;
+        const ux=dx/d, uy=dy/d;
+        if(l.source.fx===null){ l.source.x+=ux*f; l.source.y+=uy*f; }
+        if(l.target.fx===null){ l.target.x-=ux*f; l.target.y-=uy*f; }
+      }
+      for(const n of nodes) if(n._el) n._el.setAttribute('transform',`translate(${n.x},${n.y})`);
+      for(let i=0;i<links.length;i++){
+        const l=links[i]; linkEls[i].setAttribute('x1',l.source.x); linkEls[i].setAttribute('y1',l.source.y);
+        linkEls[i].setAttribute('x2',l.target.x); linkEls[i].setAttribute('y2',l.target.y);
+      }
+      alpha*=0.995; if(alpha<0.02) alpha=0.02;
+      sim=requestAnimationFrame(tick);
+    }
+    tick();
+  }
+
+  document.getElementById('load-btn').addEventListener('click',()=>{ const v=document.getElementById('skill-input').value.trim(); if(v) load(v); });
+  document.getElementById('skill-input').addEventListener('keydown',e=>{ if(e.key==='Enter'){ const v=e.target.value.trim(); if(v) load(v); } });
+
+  load(getParams());
+  document.getElementById('skill-input').value = getParams();
+</script>
+</body>
+</html>

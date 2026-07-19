@@ -1,0 +1,11 @@
+# ponytail: HTTPS via Caddy auto-TLS. Replace with your domain for prod.
+# For local dev, access via http://localhost (Caddy forwards to backend:8000).
+:80 {
+    reverse_proxy backend:8000
+}
+
+# prod example:
+# signum.example.com {
+#     tls your@email.com
+#     reverse_proxy backend:8000
+# }

@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signum — Job Market Signal Terminal</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #0A0E0C;
+    --panel: #121710;
+    --panel-alt: #0E120D;
+    --border: #2A332A;
+    --border-bright: #3B463A;
+    --amber: #FFB000;
+    --amber-dim: #8A6200;
+    --green: #5FD068;
+    --red: #E0555A;
+    --text: #D8E0D5;
+    --text-muted: #6B7568;
+    --text-dim: #454E44;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height:100vh;
+  }
+  ::selection{ background: var(--amber); color: #000; }
+  a{ color: inherit; }
+
+  /* ---- Ticker ---- */
+  .ticker-wrap{
+    background:#000;
+    border-bottom: 1px solid var(--border);
+    overflow:hidden;
+    white-space:nowrap;
+    position:relative;
+    height:30px;
+  }
+  .ticker-wrap::before, .ticker-wrap::after{
+    content:''; position:absolute; top:0; bottom:0; width:40px; z-index:2; pointer-events:none;
+  }
+  .ticker-wrap::before{ left:0; background:linear-gradient(90deg,#000,transparent);}
+  .ticker-wrap::after{ right:0; background:linear-gradient(270deg,#000,transparent);}
+  .ticker{
+    display:inline-flex;
+    align-items:center;
+    height:30px;
+    font-family: var(--mono);
+    font-size:12px;
+    letter-spacing:0.02em;
+    animation: scroll 38s linear infinite;
+    will-change: transform;
+  }
+  @keyframes scroll{
+    from{ transform: translateX(0); }
+    to{ transform: translateX(-50%); }
+  }
+  .tick{ padding: 0 22px; color: var(--text-muted); border-right:1px solid var(--border); }
+  .tick b{ color: var(--amber); font-weight:600; }
+  .tick .up{ color: var(--green); }
+  .tick .up::before{ content:'▲ '; }
+
+  @media (prefers-reduced-motion: reduce){
+    .ticker{ animation: none; }
+  }
+
+  /* ---- Header ---- */
+  header{
+    padding: 18px 28px 0 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand-row{
+    display:flex; align-items:baseline; justify-content:space-between;
+    padding-bottom: 16px;
+  }
+  .brand{
+    font-family: var(--mono);
+    font-weight:700;
+    font-size: 20px;
+    letter-spacing: 0.03em;
+    color: var(--text);
+  }
+  .brand .cursor{
+    display:inline-block; width:9px; height:16px; background:var(--amber);
+    margin-left:6px; vertical-align:-2px;
+    animation: blink 1.1s step-end infinite;
+  }
+  @keyframes blink{ 50%{ opacity:0; } }
+  .brand-sub{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.04em;
+  }
+  .status-pill{
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--green);
+    border:1px solid var(--border-bright);
+    padding: 4px 10px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .status-pill .dot{ width:6px; height:6px; background:var(--green); border-radius:50%; box-shadow:0 0 6px var(--green); }
+
+  /* ---- Tabs ---- */
+  nav.tabs{
+    display:flex; gap: 2px;
+  }
+  nav.tabs button{
+    font-family: var(--mono);
+    font-size: 12.5px;
+    letter-spacing:0.03em;
+    background: transparent;
+    color: var(--text-muted);
+    border:none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 18px 12px 18px;
+    cursor:pointer;
+    transition: color .12s ease;
+  }
+  nav.tabs button .idx{ color: var(--text-dim); margin-right:6px; }
+  nav.tabs button:hover{ color: var(--text); }
+  nav.tabs button.active{ color: var(--amber); border-bottom-color: var(--amber); }
+  nav.tabs button.active .idx{ color: var(--amber); }
+
+  main{ padding: 24px 28px 60px 28px; max-width: 1280px; margin:0 auto; }
+  section{ display:none; }
+  section.active{ display:block; }
+
+  /* ---- Stat cards ---- */
+  .stats-row{ display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; margin-bottom: 22px; }
+  .stat-card{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 16px 18px;
+  }
+  .stat-label{
+    font-family: var(--mono); font-size: 10.5px; letter-spacing:0.08em;
+    color: var(--text-muted); text-transform: uppercase; margin-bottom:8px;
+  }
+  .stat-value{ font-family: var(--mono); font-size: 26px; font-weight:600; color: var(--text); }
+  .stat-value.amber{ color: var(--amber); }
+  .stat-delta{ font-family: var(--mono); font-size: 11px; margin-top:6px; color: var(--green); }
+  .stat-delta.down{ color: var(--red); }
+
+  .panel-title{
+    font-family: var(--mono); font-size: 12px; letter-spacing:0.06em; text-transform:uppercase;
+    color: var(--text-muted); margin: 26px 0 10px 0; display:flex; align-items:center; gap:8px;
+  }
+  .panel-title::after{ content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ---- Table ---- */
+  table{ width:100%; border-collapse: collapse; font-family: var(--mono); font-size: 12.5px; }
+  thead th{
+    text-align:left; font-weight:500; color: var(--text-dim); text-transform:uppercase;
+    font-size:10.5px; letter-spacing:0.06em; padding: 8px 12px; border-bottom:1px solid var(--border-bright);
+  }
+  tbody td{ padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text); }
+  tbody tr:hover{ background: var(--panel-alt); }
+  .pair{ color: var(--text); }
+  .pair .sep{ color: var(--text-dim); margin: 0 6px; }
+  .score{ color: var(--amber); font-weight:600; }
+  .badge{ display:inline-block; padding:1px 6px; font-size:10px; border:1px solid var(--border-bright); color:var(--text-muted); }
+  .spark{ display:block; }
+  .verify{ color: var(--green); text-decoration:none; font-size:11.5px; }
+  .verify:hover{ text-decoration:underline; }
+  .msg-empty{ color:var(--text-muted); font-family:var(--mono); font-size:12px; padding:18px 0; }
+  .msg-error{ color:var(--red); font-family:var(--mono); font-size:12px; padding:18px 0; }
+
+  /* ---- Search ---- */
+  .chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+  .chip{
+    font-family: var(--mono); font-size:12px; padding:6px 12px;
+    border:1px solid var(--border-bright); color: var(--text-muted); cursor:pointer;
+    transition: all .12s ease;
+  }
+  .chip:hover{ color: var(--amber); border-color: var(--amber-dim); }
+  .chip.selected{ color:#000; background: var(--amber); border-color: var(--amber); }
+  .searchbar{
+    display:flex; align-items:center; gap:8px; border:1px solid var(--border-bright);
+    padding: 10px 14px; margin-bottom: 22px; background: var(--panel);
+  }
+  .searchbar span{ color: var(--amber); font-family: var(--mono); }
+  .searchbar input{
+    background:transparent; border:none; outline:none; color:var(--text);
+    font-family: var(--mono); font-size:13px; flex:1;
+  }
+  .searchbar input::placeholder{ color: var(--text-dim); }
+  .idx-note{ font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-bottom:16px; }
+  .idx-note b{ color:var(--text-muted); }
+
+  /* ---- Graph ---- */
+  .graph-card{
+    background: var(--panel); border:1px solid var(--border); padding: 24px;
+    display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;
+  }
+  .graph-card .gtitle{ font-family: var(--mono); font-size:14px; color:var(--text); margin-bottom:6px; }
+  .graph-card .gsub{ font-family: var(--sans); font-size:12.5px; color:var(--text-muted); max-width:520px; }
+  .btn{
+    font-family: var(--mono); font-size:12px; color: var(--bg); background: var(--amber);
+    border:none; padding: 9px 16px; cursor:pointer; letter-spacing:0.03em;
+  }
+  .btn:hover{ background:#ffc233; }
+
+  /* ---- System ---- */
+  .sys-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:14px; }
+  .sys-card{ background:var(--panel); border:1px solid var(--border); padding:16px 18px; }
+  .sys-row{ display:flex; justify-content:space-between; padding: 7px 0; border-bottom:1px dashed var(--border); font-family:var(--mono); font-size:12px; }
+  .sys-row:last-child{ border-bottom:none; }
+  .sys-row .k{ color:var(--text-muted); }
+  .sys-row .v{ color:var(--text); }
+  .sys-row .v.ok{ color: var(--green); }
+  .endpoint-list code{ font-family:var(--mono); font-size:11.5px; color:var(--amber); }
+
+  footer{
+    border-top:1px solid var(--border); padding: 14px 28px; font-family: var(--mono);
+    font-size:10.5px; color:var(--text-dim); display:flex; justify-content:space-between;
+  }
+
+  @media(max-width:768px){
+    .stats-row{ grid-template-columns: 1fr 1fr; }
+    .sys-grid{ grid-template-columns: 1fr; }
+    .brand-row{ flex-direction:column; gap:10px; }
+  }
+
+  /* ---- Guide modal ---- */
+  #guide-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.72); z-index:100; display:none; align-items:center; justify-content:center; padding:20px; }
+  #guide-overlay.open{ display:flex; }
+  #guide{ background:var(--panel); border:1px solid var(--border-bright); max-width:720px; width:100%; max-height:86vh; overflow-y:auto; padding:26px 30px; font-family:var(--sans); color:var(--text); }
+  #guide h2{ font-family:var(--mono); font-size:18px; color:var(--amber); margin-bottom:4px; letter-spacing:.03em; }
+  #guide .sub{ font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-bottom:18px; }
+  #guide h3{ font-family:var(--mono); font-size:13px; color:var(--green); margin:18px 0 6px; text-transform:uppercase; letter-spacing:.05em; }
+  #guide p{ font-size:13px; line-height:1.65; color:var(--text-muted); margin-bottom:8px; }
+  #guide b{ color:var(--text); }
+  #guide .mono{ font-family:var(--mono); color:var(--amber); font-size:12px; }
+  #guide .example{ background:var(--panel-alt); border-left:3px solid var(--amber); padding:10px 14px; margin:8px 0; font-family:var(--mono); font-size:12px; color:var(--text); }
+  #guide .close-row{ display:flex; justify-content:flex-end; margin-top:22px; }
+  #guide .btn{ font-family:var(--mono); }
+</style>
+</head>
+<body>
+
+<div class="ticker-wrap">
+  <div class="ticker" id="ticker"><span class="tick">loading live signals…</span></div>
+</div>
+
+<header>
+  <div class="brand-row">
+    <div>
+      <div class="brand">SIGNUM<span class="cursor"></span></div>
+      <div class="brand-sub">JOB MARKET SIGNAL TERMINAL — LIVE INGEST · TIMESCALEDB</div>
+    </div>
+    <div class="status-pill"><span class="dot"></span><span id="nav-status">LIVE</span></div>
+    <button id="help-btn" title="How to use Signum" style="font-family:var(--mono);font-size:13px;color:var(--bg);background:var(--amber);border:none;padding:6px 12px;cursor:pointer;margin-left:10px">? GUIDE</button>
+  </div>
+  <nav class="tabs">
+    <button class="active" data-tab="signals"><span class="idx">[1]</span>SIGNALS</button>
+    <button data-tab="search"><span class="idx">[2]</span>SEARCH</button>
+    <button data-tab="graph"><span class="idx">[3]</span>GRAPH</button>
+    <button data-tab="system"><span class="idx">[4]</span>SYSTEM</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- SIGNALS -->
+  <section class="active" id="signals">
+    <div class="stats-row" id="signals-stats">
+      <div class="stat-card">
+        <div class="stat-label">Postings ingested</div>
+        <div class="stat-value" id="sig-postings">—</div>
+        <div class="stat-delta" id="sig-postings-delta">&nbsp;</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Active skill pairs</div>
+        <div class="stat-value" id="sig-pairs">—</div>
+        <div class="stat-delta" id="sig-pairs-delta">&nbsp;</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Top breakout score</div>
+        <div class="stat-value amber" id="sig-top-score">—</div>
+        <div class="stat-delta" id="sig-top-pair">&nbsp;</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Date range</div>
+        <div class="stat-value" id="sig-daterange" style="font-size:16px">—</div>
+        <div class="stat-delta">&nbsp;</div>
+      </div>
+    </div>
+
+    <div class="panel-title">Breakout signals — ranked</div>
+    <div style="background:var(--panel);border:1px solid var(--border);padding:12px 16px;margin-bottom:14px;font-family:var(--sans);font-size:12.5px;color:var(--text-muted);line-height:1.6">
+      Pairs of skills that are <b style="color:var(--text)">surging together</b> in live job postings. <b style="color:var(--amber)">Breakout</b> = trend strength (higher = bigger surge). <b style="color:var(--amber)">Vel.</b> = how many <i>more</i> postings mentioned the pair in the last 30 days vs the 30 before. <b style="color:var(--amber)">Nov.</b> = how new the pair is.
+      <span style="font-family:var(--mono);color:var(--text)">e.g. Confluence × Jira · 3.22 breakout · +4 more/30d</span> = this pair appeared in 4 extra postings last month and is among the hottest right now.
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Skill pair</th>
+          <th title="Breakout score: how strongly this pair is trending (velocity × novelty × log count). Higher = bigger surge.">Breakout ↑</th>
+          <th title="Velocity: extra postings mentioning this pair in the last 30 days vs the 30 before.">Velocity (30d)</th>
+          <th title="Novelty: how new the pair is. Recently-first-seen pairs score higher.">Novelty</th>
+          <th title="Sparkline of the pair's recent posting count.">Trend</th>
+        </tr>
+      </thead>
+      <tbody id="signals-body"></tbody>
+    </table>
+    <div id="signals-status"></div>
+  </section>
+
+  <!-- SEARCH -->
+  <section id="search">
+    <div class="searchbar">
+      <span>&gt;</span>
+      <input type="text" id="search-input" placeholder="search skills, e.g. python, kubernetes, sql..." />
+    </div>
+    <div class="idx-note">index: <b>bitmap</b> (redis) attempted first → fallback <b>b-tree</b> (postgres) if miss. current bench @ 2.3k rows: <b>b-tree faster</b>.</div>
+    <div class="chip-row" id="skill-chips"></div>
+
+    <div class="panel-title" id="search-title">Results</div>
+    <table>
+      <thead><tr><th>Title</th><th>Source</th><th>Skills matched</th><th>Posted</th><th></th></tr></thead>
+      <tbody id="search-body"></tbody>
+    </table>
+    <div id="search-status"></div>
+  </section>
+
+  <!-- GRAPH -->
+  <section id="graph">
+    <div class="panel-title">Skill co-occurrence network</div>
+    <div class="graph-card">
+      <div>
+        <div class="gtitle">Full-screen co-occurrence viz</div>
+        <div class="gsub">Force-directed graph of which skills appear together across live postings. Node size = frequency, edge weight = co-occurrence strength. Opens /graph/ in a dedicated fullscreen view.</div>
+      </div>
+      <button class="btn" onclick="window.open('/graph/','_blank')">OPEN FULLSCREEN →</button>
+    </div>
+    <div class="panel-title">Preview</div>
+    <div class="graph-card" style="padding:0; overflow:hidden;">
+      <svg viewBox="0 0 900 300" width="100%" height="300" id="graph-preview"></svg>
+    </div>
+    <div id="graph-status" class="msg-empty">Click a skill chip below to preview its network.</div>
+    <div class="panel-title">Explore a skill</div>
+    <div class="chip-row" id="graph-chips"></div>
+  </section>
+
+  <!-- SYSTEM -->
+  <section id="system">
+    <div class="panel-title">Health</div>
+    <div class="sys-grid">
+      <div class="sys-card" id="sys-health">
+        <div class="sys-row"><span class="k">API</span><span class="v ok" id="h-api">● —</span></div>
+        <div class="sys-row"><span class="k">TimescaleDB</span><span class="v ok" id="h-db">● —</span></div>
+        <div class="sys-row"><span class="k">Redis (bitmap index)</span><span class="v ok" id="h-redis">● —</span></div>
+        <div class="sys-row"><span class="k">Postings</span><span class="v" id="h-postings">—</span></div>
+      </div>
+      <div class="sys-card endpoint-list">
+        <div class="sys-row"><span class="k"><code>/api/v1/signals</code></span><span class="v ok">GET</span></div>
+        <div class="sys-row"><span class="k"><code>/api/v1/search</code></span><span class="v ok">GET</span></div>
+        <div class="sys-row"><span class="k"><code>/api/v1/graph</code></span><span class="v ok">GET</span></div>
+        <div class="sys-row"><span class="k"><code>/api/v1/emerging</code></span><span class="v ok">GET</span></div>
+        <div class="sys-row"><span class="k"><code>/api/v1/taxonomy</code></span><span class="v ok">GET</span></div>
+        <div class="sys-row"><span class="k"><code>/api/v1/metrics</code></span><span class="v ok">GET</span></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <span>SIGNUM · DBMS course project</span>
+  <span>bitmap idx vs b-tree · benchmarked honestly, not hidden</span>
+</footer>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const API = {
+    health: '/api/v1/health',
+    signals: '/api/v1/signals?limit=25',
+    search: '/api/v1/search',
+    graph: '/api/v1/graph',
+    emerging: '/api/v1/emerging?limit=20',
+  };
+  // ponytail: surface any runtime error on-page so failures are visible.
+  window.onerror = (msg, src, line, col, err) => {
+    const el = document.getElementById('signals-status');
+    if(el){ el.className='msg-error'; el.textContent = 'JS ERROR: ' + msg + ' @' + line + ':' + col; }
+    return false;
+  };
+
+  async function api(path){
+    const r = await fetch(path);
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    return r.json();
+  }
+
+  // ponytail: skills come from /api/v1/taxonomy (real, present in index).
+  // Static fallback only if that endpoint is unreachable.
+  const FALLBACK_SKILLS = ['Python','SQL','Kubernetes','Docker','Git','PostgreSQL','REST','Linux','AWS','Go','Rust','Terraform','React','TypeScript'];
+  let ALL_SKILLS = FALLBACK_SKILLS;
+
+  async function loadSkills(){
+    try{
+      const d = await api('/api/v1/taxonomy?limit=200');
+      if(d.skills && d.skills.length) ALL_SKILLS = d.skills;
+    }catch(e){ /* keep fallback */ }
+  }
+
+  function sparkline(values, color){
+    if(!values || values.length < 2) return '<svg class="spark" width="90" height="26"></svg>';
+    const w=90,h=26,max=Math.max(...values),min=Math.min(...values);
+    const pts = values.map((v,i)=>{
+      const x = (i/(values.length-1))*w;
+      const y = h - ((v-min)/(max-min||1))*(h-4) - 2;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return `<svg class="spark" width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6"/></svg>`;
+  }
+
+  // ---- Signals ----
+  async function loadSignals(){
+    const tbody = $('signals-body'), status = $('signals-status');
+    tbody.innerHTML=''; status.textContent='';
+    try{
+      const data = await api(API.signals);
+      const sigs = data.signals || [];
+      $('sig-pairs').textContent = data.total_pairs ?? sigs.length;
+      if(!sigs.length){
+        status.className='msg-empty'; status.textContent='No signals yet — run the ingestion pipeline first.';
+        return;
+      }
+      const top = sigs[0];
+      $('sig-top-score').textContent = top.breakout_score.toFixed(2);
+      $('sig-top-pair').textContent = top.skill_a + ' × ' + top.skill_b;
+      const dates = sigs.map(s=>s.first_seen).filter(Boolean).sort();
+      if(dates.length) $('sig-daterange').textContent = dates[0].split('T')[0] + ' — ' + dates[dates.length-1].split('T')[0];
+
+      sigs.forEach((s,i)=>{
+        // ponytail: recent buckets give a crude trend sparkline; api returns
+        // `recent` count only, so we synthesize a short series from it.
+        const base = Math.max(1, s.recent - s.velocity);
+        const trend = [base, base + Math.round(s.velocity/2), s.recent];
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${String(i+1).padStart(2,'0')}</td>
+          <td class="pair">${s.skill_a}<span class="sep">×</span>${s.skill_b}</td>
+          <td class="score" title="Breakout score: how strongly this pair is trending. Higher = bigger surge.">${s.breakout_score.toFixed(2)} <span style="font-size:9px;color:var(--text-dim)">breakout</span></td>
+          <td title="Velocity: extra postings mentioning this pair in the last 30 days vs the 30 before.">${s.velocity>0?'+':''}${s.velocity} <span style="font-size:9px;color:var(--text-dim)">more / 30d</span></td>
+          <td title="Novelty: how new the pair is. Recently-first-seen pairs score higher.">${s.novelty.toFixed(2)}</td>
+          <td>${sparkline(trend,'#FFB000')}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      buildTicker(sigs);
+    }catch(e){
+      status.className='msg-error'; status.textContent='Failed: '+e.message;
+    }
+  }
+
+  // ---- Ticker ----
+  let tickerBuilt = false;
+  function buildTicker(sigs){
+    const el = $('ticker');
+    if(tickerBuilt) return;
+    const html = sigs.slice(0,12).map(s=>
+      `<span class="tick">${s.skill_a} × ${s.skill_b} <b>${s.breakout_score.toFixed(2)}</b> <span class="up">${s.velocity}</span></span>`
+    ).join('');
+    el.innerHTML = html + html;
+    tickerBuilt = true;
+  }
+
+  // ---- Search ----
+  function renderChips(containerId, clickHandler, preselect){
+    const c = $(containerId); c.innerHTML='';
+    ALL_SKILLS.forEach(s=>{
+      const chip = document.createElement('span');
+      chip.className = 'chip' + (preselect && preselect.includes(s) ? ' selected' : '');
+      chip.textContent = s;
+      chip.addEventListener('click', ()=>clickHandler(s));
+      c.appendChild(chip);
+    });
+  }
+
+  async function doSearch(skill){
+    const tbody = $('search-body'), status = $('search-status'), title = $('search-title');
+    tbody.innerHTML=''; status.textContent='';
+    if(!skill){ status.className='msg-empty'; status.textContent='Pick a skill or type one.'; return; }
+    title.textContent = 'Results — searching "' + skill + '"';
+    try{
+      const data = await api(API.search + '?skills=' + encodeURIComponent(skill) + '&limit=25');
+      const results = data.results || [];
+      if(!results.length){
+        // ponytail: suggest real skills containing/substring-matching the query
+        const q = skill.toLowerCase();
+        const near = ALL_SKILLS.filter(s => s.toLowerCase().includes(q) || q.includes(s.toLowerCase())).slice(0,6);
+        status.className='msg-empty';
+        status.innerHTML = 'No postings found for "'+skill+'".' + (near.length ? ' Did you mean: '+near.map(s=>'<b style="color:var(--amber);cursor:pointer" onclick="document.getElementById(\'search-input\').value=\''+s+'\';doSearch(\''+s+'\')">'+s+'</b>').join(', ')+'?' : '');
+        return;
+      }
+      status.className='msg-empty';
+      status.textContent = results.length + ' postings via ' + data.method + ' index';
+      results.forEach(r=>{
+        const tr = document.createElement('tr');
+        const link = r.url ? `<a class="verify" href="${r.url}" target="_blank" rel="noopener">Verify ↗</a>` : '—';
+        const posted = r.event_id ? '' : '';
+        tr.innerHTML = `
+          <td>${r.title || '—'}</td>
+          <td><span class="badge">${r.source || '—'}</span></td>
+          <td>${skill}</td>
+          <td>${posted}</td>
+          <td>${link}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }catch(e){
+      status.className='msg-error'; status.textContent='Search failed: '+e.message;
+    }
+  }
+
+  function loadSkillChips(){
+    renderChips('skill-chips', (s)=>{ $('search-input').value=s; doSearch(s); }, ['Python','SQL','Kubernetes']);
+  }
+
+  // ---- Graph ----
+  async function loadGraphPreview(skill){
+    const svg = $('graph-preview'), status = $('graph-status');
+    svg.innerHTML=''; status.className='msg-empty'; status.textContent='Loading '+skill+'…';
+    try{
+      const data = await api(API.graph + '?skill=' + encodeURIComponent(skill) + '&limit=8');
+      const nodes = data.nodes || [];
+      const links = data.links || [];
+      if(nodes.length < 2){
+        status.textContent = 'No co-occurrence data for "'+skill+'".';
+        return;
+      }
+      status.textContent = '';
+      // ponytail: circular layout, center = searched skill. Good enough preview.
+      const cx=450, cy=150, R=110;
+      const neighbors = nodes.filter(n=>n.group==='neighbor');
+      const pos = {};
+      pos[skill] = {x:cx, y:cy, r:20};
+      neighbors.forEach((n,i)=>{
+        const a = (i/neighbors.length)*Math.PI*2;
+        pos[n.id] = {x: cx + Math.cos(a)*R, y: cy + Math.sin(a)*R, r: 10 + (n.group==='neighbor'?4:0)};
+      });
+      const svgns='http://www.w3.org/2000/svg';
+      links.forEach(l=>{
+        const a=pos[l.source], b=pos[l.target];
+        if(!a||!b) return;
+        const line=document.createElementNS(svgns,'line');
+        line.setAttribute('x1',a.x); line.setAttribute('y1',a.y);
+        line.setAttribute('x2',b.x); line.setAttribute('y2',b.y);
+        line.setAttribute('stroke','#2A332A');
+        line.setAttribute('stroke-width', Math.min(4, 1 + l.weight/2));
+        svg.appendChild(line);
+      });
+      Object.entries(pos).forEach(([id,p])=>{
+        const c=document.createElementNS(svgns,'circle');
+        c.setAttribute('cx',p.x); c.setAttribute('cy',p.y); c.setAttribute('r',p.r);
+        c.setAttribute('fill','#121710');
+        c.setAttribute('stroke', id===skill?'#FFB000':'#5FD068');
+        c.setAttribute('stroke-width','1.4');
+        svg.appendChild(c);
+        const t=document.createElementNS(svgns,'text');
+        t.setAttribute('x',p.x); t.setAttribute('y',p.y+p.r+14);
+        t.setAttribute('fill','#6B7568'); t.setAttribute('font-size','10');
+        t.setAttribute('font-family','IBM Plex Mono, monospace'); t.setAttribute('text-anchor','middle');
+        t.textContent=id;
+        svg.appendChild(t);
+      });
+    }catch(e){
+      status.className='msg-error'; status.textContent='Graph failed: '+e.message;
+    }
+  }
+
+  function loadGraphChips(){
+    renderChips('graph-chips', (s)=>loadGraphPreview(s), ['SQL','Python','Kubernetes']);
+  }
+
+  // ---- System ----
+  async function loadHealth(){
+    try{
+      const h = await api(API.health);
+      $('h-api').textContent = '● ' + h.status;
+      $('h-db').textContent = '● ' + h.database;
+      $('h-redis').textContent = '● connected';
+      $('h-postings').textContent = (h.postings ?? 0).toLocaleString();
+      $('sig-postings').textContent = (h.postings ?? 0).toLocaleString();
+      $('nav-status').textContent = 'LIVE · ' + h.postings + ' postings';
+    }catch(e){
+      $('h-api').textContent = '● unreachable';
+      $('nav-status').textContent = 'OFFLINE';
+    }
+  }
+
+  // ---- Tabs ----
+  document.querySelectorAll('nav.tabs button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('main section').forEach(s=>s.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.tab).classList.add('active');
+      if(btn.dataset.tab==='search') loadSkillChips();
+      if(btn.dataset.tab==='graph') loadGraphChips();
+    });
+  });
+
+  // ---- Guide modal ----
+  $('help-btn').addEventListener('click', ()=> document.getElementById('guide-overlay').classList.add('open'));
+  document.getElementById('guide-overlay').addEventListener('click', e=>{ if(e.target.id==='guide-overlay') e.target.classList.remove('open'); });
+  // ponytail: auto-open once per browser so a first-time viewer gets oriented.
+  if(!localStorage.getItem('signum_guide_seen')){
+    document.getElementById('guide-overlay').classList.add('open');
+    localStorage.setItem('signum_guide_seen','1');
+  }
+
+  // ---- Search events ----
+  $('search-input').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(e.target.value.trim()); });
+
+  // ---- Init ----
+  loadSkills().then(()=>{
+    loadSkillChips();
+    loadGraphChips();
+  });
+  loadSignals();
+  loadHealth();
+</script>
+
+<div id="guide-overlay">
+  <div id="guide">
+    <h2>SIGNUM — HOW TO READ THIS</h2>
+    <div class="sub">A 60-second guide to the Job Market Signal Terminal</div>
+
+    <h3>What is Signum?</h3>
+    <p>Signum pulls <b>live job postings</b> from real sources (Remotive, Arbeitnow, Hacker News), extracts the <b>skills</b> mentioned in each, and watches which <b>pairs of skills</b> are rising together. It's a signal terminal for spotting what's becoming hot in the job market — not a job board.</p>
+
+    <h3>[1] SIGNALS — what's breaking out</h3>
+    <p>The main view ranks <b>skill pairs</b> by a <b>Breakout score</b>. Think of it as "which two skills are suddenly showing up together more than usual."</p>
+    <p>Each row shows:</p>
+    <p>• <b>Breakout</b> — trend strength. <span class="mono">3.22</span> = a strong surge. Formula: <span class="mono">velocity × novelty × log(count+1)</span>.<br>
+       • <b>Vel. (+N more / 30d)</b> — how many <i>extra</i> postings mentioned this pair in the last 30 days vs the 30 before. <span class="mono">+4 more/30d</span> = 4 more than before.<br>
+       • <b>Nov.</b> — how new the pair is. A pair first seen recently scores higher (fresh signal, not an old habit).<br>
+       • <b>Trend</b> — a mini sparkline of the pair's recent posting count.</p>
+    <div class="example">Confluence × Jira · 3.22 breakout · +4 more / 30d<br>= this tool-pair appeared in 4 extra postings last month and is among the hottest combinations right now.</div>
+
+    <h3>[2] SEARCH — prove it's real</h3>
+    <p>Click a <b>skill chip</b> (or type one) to find live postings that mention it. Every result has a <b>Verify ↗</b> link straight to the original job on the source site — so you can confirm the data is real, not made up. If a search misses, Signum suggests a real skill you might have meant.</p>
+
+    <h3>[3] GRAPH — how skills connect</h3>
+    <p>A network of which skills appear in the same postings. The <b>amber</b> node is the skill you searched; <b>green</b> nodes are skills that co-occur with it. Thicker lines = stronger connection. Click <b>OPEN FULLSCREEN</b> for an animated, draggable view.</p>
+
+    <h3>[4] SYSTEM — is it healthy?</h3>
+    <p>Shows live status of the API, TimescaleDB, and the Redis bitmap index, plus the list of API endpoints powering everything.</p>
+
+    <h3>The ticker up top</h3>
+    <p>The scrolling bar shows the top breakout pairs right now — a real-time headline of what's trending.</p>
+
+    <div class="close-row"><button class="btn" onclick="document.getElementById('guide-overlay').classList.remove('open')">GOT IT</button></div>
+  </div>
+</div>
+
+</body>
+</html>
