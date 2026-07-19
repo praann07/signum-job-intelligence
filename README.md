@@ -1,0 +1,1 @@
+# signum-job-intelligence
