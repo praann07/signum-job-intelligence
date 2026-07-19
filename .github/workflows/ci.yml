@@ -41,6 +41,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e backend/
+      # ponytail: CI pip install doesn't pull the spaCy model (only the Docker
+      # image does), so download it here or extraction fails at runtime.
+      - run: python -m spacy download en_core_web_sm
       - run: alembic upgrade head
         working-directory: backend
         env:
