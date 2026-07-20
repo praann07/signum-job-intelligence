@@ -7,11 +7,35 @@ Sources are free and key-less except Naukri (Firecrawl, optional).
 from __future__ import annotations
 
 import ast
+import asyncio
 import datetime as _dt
+import logging
 import re
 
 import httpx
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+
+async def _fetch_json(client: httpx.AsyncClient, method: str, url: str, **kw) -> httpx.Response:
+    """Best-effort GET/POST with retry + exponential backoff.
+
+    ponytail: transient 5xx/timeouts drop a whole source otherwise; 3 tries
+    with 0.5/1s backoff covers that without a retry library.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        if attempt:
+            await asyncio.sleep(0.5 * attempt)
+        try:
+            r = await client.request(method, url, **kw)
+            r.raise_for_status()
+            return r
+        except (httpx.HTTPError, httpx.TimeoutException) as e:
+            last_exc = e
+            logger.warning("source fetch %s %s attempt %d failed: %s", method, url, attempt + 1, e)
+    raise last_exc if last_exc else RuntimeError("source fetch failed")
 
 
 class RawPosting(BaseModel):
@@ -30,8 +54,7 @@ class RawPosting(BaseModel):
 async def fetch_remotive() -> list[RawPosting]:
     """Remotive public remote-jobs API — real, live, no key."""
     async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.get("https://remotive.com/api/remote-jobs?search=&category=")
-        r.raise_for_status()
+        r = await _fetch_json(c, "GET", "https://remotive.com/api/remote-jobs?search=&category=")
         data = r.json().get("jobs", [])
     out = []
     for j in data:
@@ -60,8 +83,7 @@ async def fetch_remotive() -> list[RawPosting]:
 async def fetch_arbeitnow() -> list[RawPosting]:
     """Arbeitnow public job-board API — real, live, no key (EU/remote heavy)."""
     async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.get("https://www.arbeitnow.com/api/job-board-api")
-        r.raise_for_status()
+        r = await _fetch_json(c, "GET", "https://www.arbeitnow.com/api/job-board-api")
         data = r.json().get("data", [])
     out = []
     for j in data:
@@ -97,12 +119,11 @@ async def fetch_naukri(
         return []
     url = f"https://www.naukri.com/{query.replace(' ', '-')}-jobs"
     async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.post(
-            "https://api.firecrawl.dev/v1/scrape",
+        r = await _fetch_json(
+            c, "POST", "https://api.firecrawl.dev/v1/scrape",
             json={"url": url, "formats": ["markdown"]},
             headers={"Authorization": f"Bearer {firecrawl_api_key}"},
         )
-        r.raise_for_status()
         md = r.json().get("data", {}).get("markdown", "")
     # ponytail: Firecrawl returns raw markdown; split on job-title-like lines.
     # This is a best-effort parse — real structured Naukri API is paid.
@@ -136,8 +157,8 @@ async def fetch_hackernews(limit: int = 200) -> list[RawPosting]:
     async with httpx.AsyncClient(timeout=30) as c:
         # ponytail: sort by date, grab recent hiring comments in bulk pages.
         for page in range(0, (limit // 100) + 1):
-            r = await c.get(
-                "https://hn.algolia.com/api/v1/search",
+            r = await _fetch_json(
+                c, "GET", "https://hn.algolia.com/api/v1/search",
                 params={
                     "tags": "comment",
                     "query": "hiring",
@@ -145,7 +166,6 @@ async def fetch_hackernews(limit: int = 200) -> list[RawPosting]:
                     "page": page,
                 },
             )
-            r.raise_for_status()
             hits = r.json().get("hits", [])
             if not hits:
                 break
