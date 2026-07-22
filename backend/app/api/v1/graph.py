@@ -22,7 +22,8 @@ async def graph(
     if not skill_count:
         raise HTTPException(status_code=404, detail=f"Skill '{skill}' not found in any postings")
 
-    rows = await session.execute(text("""
+    rows = await session.execute(
+        text("""
         SELECT
             CASE WHEN lower(a.skill) = :skill THEN b.skill ELSE a.skill END AS neighbor,
             COUNT(*) AS weight
@@ -32,7 +33,9 @@ async def graph(
         GROUP BY neighbor
         ORDER BY weight DESC
         LIMIT :limit
-    """), {"skill": skill_lc, "limit": limit})
+    """),
+        {"skill": skill_lc, "limit": limit},
+    )
 
     neighbors = [{"skill": r[0], "weight": r[1]} for r in rows]
     nodes = [{"id": skill, "group": "center"}]

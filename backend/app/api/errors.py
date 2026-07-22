@@ -10,6 +10,6 @@ async def general_error_handler(request: Request, exc: Exception) -> JSONRespons
             "title": "Internal Server Error",
             "status": 500,
             "detail": "An unexpected error occurred.",
-            "instance": str(request.url),
+            "instance": request.url.path,
         },
     )

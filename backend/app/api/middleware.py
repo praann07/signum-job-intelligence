@@ -1,3 +1,4 @@
+import secrets
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -20,7 +21,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.method in ("POST", "PUT", "DELETE"):
             auth = request.headers.get("Authorization", "")
             expected = get_settings().api_key
-            if not auth.startswith("Bearer ") or auth.removeprefix("Bearer ") != expected:
+            token = auth.removeprefix("Bearer ")
+            if not auth.startswith("Bearer ") or not secrets.compare_digest(token, expected):
                 return JSONResponse(
                     status_code=401,
                     content={
@@ -58,10 +60,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     status_code=429,
                     content={
                         "detail": "Rate limit exceeded",
-                        "hint": (
-                            f"Max {limit} {method} requests per {window}s. "
-                            "Try again later."
-                        ),
+                        "hint": (f"Max {limit} {method} requests per {window}s. Try again later."),
                     },
                 )
         except Exception:

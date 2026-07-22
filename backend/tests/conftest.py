@@ -34,7 +34,8 @@ async def clean_db(db_engine):
         await session.execute(
             text(
                 "TRUNCATE job_skills, job_events, employers, "
-                "skill_cooccurrence, emerging_candidates RESTART IDENTITY CASCADE"
+                "skill_cooccurrence, emerging_candidates "
+                "RESTART IDENTITY CASCADE"
             )
         )
         await session.commit()

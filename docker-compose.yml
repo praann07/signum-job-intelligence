@@ -6,9 +6,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: signum
-      POSTGRES_USER: signum
-      POSTGRES_PASSWORD: signum_pass
+      POSTGRES_DB: ${POSTGRES_DB:-signum}
+      POSTGRES_USER: ${POSTGRES_USER:-signum}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-signum_pass}
       TIMESCALEDB_TELEMETRY: "off"
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
@@ -44,6 +44,7 @@ services:
       DATABASE_URL: "postgresql+asyncpg://signum:signum_pass@timescaledb:5432/signum"
       DATABASE_URL_SYNC: "postgresql://signum:signum_pass@timescaledb:5432/signum"
       REDIS_URL: "redis://redis:6379/0"
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:
       timescaledb:
         condition: service_healthy
@@ -72,6 +73,7 @@ services:
       DATABASE_URL: "postgresql+asyncpg://signum:signum_pass@timescaledb:5432/signum"
       DATABASE_URL_SYNC: "postgresql://signum:signum_pass@timescaledb:5432/signum"
       REDIS_URL: "redis://redis:6379/0"
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     depends_on:
       timescaledb:
         condition: service_healthy

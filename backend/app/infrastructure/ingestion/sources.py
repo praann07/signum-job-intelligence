@@ -120,7 +120,9 @@ async def fetch_naukri(
     url = f"https://www.naukri.com/{query.replace(' ', '-')}-jobs"
     async with httpx.AsyncClient(timeout=30) as c:
         r = await _fetch_json(
-            c, "POST", "https://api.firecrawl.dev/v1/scrape",
+            c,
+            "POST",
+            "https://api.firecrawl.dev/v1/scrape",
             json={"url": url, "formats": ["markdown"]},
             headers={"Authorization": f"Bearer {firecrawl_api_key}"},
         )
@@ -134,8 +136,11 @@ async def fetch_naukri(
             if title:
                 out.append(
                     RawPosting(
-                        title=title, company="unknown",
-                        location="India", country="IN", source="Naukri",
+                        title=title,
+                        company="unknown",
+                        location="India",
+                        country="IN",
+                        source="Naukri",
                     )
                 )
     return out
@@ -155,15 +160,20 @@ async def fetch_hackernews(limit: int = 200) -> list[RawPosting]:
     """
     out: list[RawPosting] = []
     async with httpx.AsyncClient(timeout=30) as c:
-        # ponytail: sort by date, grab recent hiring comments in bulk pages.
+        # ponytail: sort by date (default Algolia is relevance), filter to last
+        # 60 days so we don't re-fetch the same old comments every run.
+        cutoff = str(int(_dt.datetime.now(tz=_dt.UTC).timestamp()) - 60 * 24 * 3600)
         for page in range(0, (limit // 100) + 1):
             r = await _fetch_json(
-                c, "GET", "https://hn.algolia.com/api/v1/search",
+                c,
+                "GET",
+                "https://hn.algolia.com/api/v1/search_by_date",
                 params={
                     "tags": "comment",
                     "query": "hiring",
                     "hitsPerPage": 100,
                     "page": page,
+                    "numericFilters": f"created_at_i>={cutoff}",
                 },
             )
             hits = r.json().get("hits", [])
@@ -199,4 +209,3 @@ async def fetch_hackernews(limit: int = 200) -> list[RawPosting]:
                 if len(out) >= limit:
                     return out
     return out
-

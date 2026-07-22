@@ -13,7 +13,9 @@ import asyncpg
 import httpx
 
 API = "http://127.0.0.1:8000"
-DB_DSN = os.environ.get("DATABASE_URL_SYNC", "postgresql://signum:signum_pass@localhost:5432/signum")
+DB_DSN = os.environ.get(
+    "DATABASE_URL_SYNC", "postgresql://signum:signum_pass@localhost:5432/signum"
+)
 
 # Real multi-filter query shape used by the dashboard.
 QUERIES = [
@@ -53,7 +55,7 @@ async def bench_postgres(skills, filters, conn):
         SELECT e.event_id FROM job_events e
         JOIN job_skills js ON e.event_id = js.event_id
         {join_employer}
-        WHERE {' AND '.join(clauses)}
+        WHERE {" AND ".join(clauses)}
         GROUP BY e.event_id
         HAVING COUNT(DISTINCT js.skill) = ${i}
         LIMIT 100

@@ -37,21 +37,23 @@ async def search(
         idx = get_index()
         results = await idx.search(skills, filters, limit)
         if results:
-            # ponytail: bitmap rows store title/source but not url; backfill
-            # url (and any missing title/source) from DB in one query.
+            # ponytail: bitmap rows store title/source/url/posted_at; backfill
+            # any missing fields from DB in one query.
             missing = [r["event_id"] for r in results if not r.get("title") or "url" not in r]
             if missing:
                 rows = await session.execute(
                     text(
-                        "SELECT event_id, title, source, url "
+                        "SELECT event_id, title, source, url, posted_at "
                         "FROM job_events WHERE event_id = ANY(:ids)"
                     ),
-                    {"ids": [r["event_id"] for r in results]},
+                    {"ids": missing},
                 )
-                meta = {str(r[0]): (r[1], r[2], r[3]) for r in rows}
+                meta = {
+                    str(r[0]): (r[1], r[2], r[3], r[4].isoformat() if r[4] else None) for r in rows
+                }
                 for r in results:
                     if r["event_id"] in meta:
-                        r["title"], r["source"], r["url"] = meta[r["event_id"]]
+                        r["title"], r["source"], r["url"], r["posted_at"] = meta[r["event_id"]]
             return {
                 "skills": skills,
                 "filters": filters,
@@ -82,7 +84,7 @@ async def search(
     needs_employer = "em.size" in where
     join_employer = "JOIN employers em ON em.company_id = e.company_id" if needs_employer else ""
     sql = text(f"""
-        SELECT e.event_id, e.title, e.source, e.url
+        SELECT e.event_id, e.title, e.source, e.url, e.posted_at
         FROM job_events e
         JOIN job_skills js ON e.event_id = js.event_id
         {join_employer}
@@ -94,7 +96,16 @@ async def search(
     """)
     params["nskills"] = len(skills)
     rows = await session.execute(sql, params)
-    results = [{"event_id": str(r[0]), "title": r[1], "source": r[2], "url": r[3]} for r in rows]
+    results = [
+        {
+            "event_id": str(r[0]),
+            "title": r[1],
+            "source": r[2],
+            "url": r[3],
+            "posted_at": r[4].isoformat() if r[4] else None,
+        }
+        for r in rows
+    ]
     return {
         "skills": skills,
         "filters": filters,

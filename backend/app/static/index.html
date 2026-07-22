@@ -511,7 +511,7 @@
       results.forEach(r=>{
         const tr = document.createElement('tr');
         const link = r.url ? `<a class="verify" href="${r.url}" target="_blank" rel="noopener">Verify ↗</a>` : '—';
-        const posted = r.event_id ? '' : '';
+        const posted = r.posted_at ? new Date(r.posted_at).toLocaleDateString() : '—';
         tr.innerHTML = `
           <td>${r.title || '—'}</td>
           <td><span class="badge">${r.source || '—'}</span></td>
@@ -592,7 +592,7 @@
       const h = await api(API.health);
       $('h-api').textContent = '● ' + h.status;
       $('h-db').textContent = '● ' + h.database;
-      $('h-redis').textContent = '● connected';
+      $('h-redis').textContent = '● ' + (h.redis || 'unknown');
       $('h-postings').textContent = (h.postings ?? 0).toLocaleString();
       $('sig-postings').textContent = (h.postings ?? 0).toLocaleString();
       $('nav-status').textContent = 'LIVE · ' + h.postings + ' postings';
@@ -602,37 +602,46 @@
     }
   }
 
-  // ---- Tabs ----
-  document.querySelectorAll('nav.tabs button').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
-      document.querySelectorAll('main section').forEach(s=>s.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(btn.dataset.tab).classList.add('active');
-      if(btn.dataset.tab==='search') loadSkillChips();
-      if(btn.dataset.tab==='graph') loadGraphChips();
+  // ponytail: script runs during parse, before #guide-overlay / nav / search
+  // elements exist. Bind all DOM-touching bootstrap inside DOMContentLoaded so
+  // a missing element can't throw and abort the rest of init (was crashing at
+  // getElementById('guide-overlay').addEventListener -> null).
+  function boot(){
+    document.querySelectorAll('nav.tabs button').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+        document.querySelectorAll('main section').forEach(s=>s.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+        if(btn.dataset.tab==='search') loadSkillChips();
+        if(btn.dataset.tab==='graph') loadGraphChips();
+      });
     });
-  });
 
-  // ---- Guide modal ----
-  $('help-btn').addEventListener('click', ()=> document.getElementById('guide-overlay').classList.add('open'));
-  document.getElementById('guide-overlay').addEventListener('click', e=>{ if(e.target.id==='guide-overlay') e.target.classList.remove('open'); });
-  // ponytail: auto-open once per browser so a first-time viewer gets oriented.
-  if(!localStorage.getItem('signum_guide_seen')){
-    document.getElementById('guide-overlay').classList.add('open');
-    localStorage.setItem('signum_guide_seen','1');
+    const guide = document.getElementById('guide-overlay');
+    if(guide){
+      const help = $('help-btn');
+      if(help) help.addEventListener('click', ()=> guide.classList.add('open'));
+      guide.addEventListener('click', e=>{ if(e.target.id==='guide-overlay') guide.classList.remove('open'); });
+      if(!localStorage.getItem('signum_guide_seen')){
+        guide.classList.add('open');
+        localStorage.setItem('signum_guide_seen','1');
+      }
+    }
+
+    const si = $('search-input');
+    if(si) si.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(e.target.value.trim()); });
+
+    loadSkills().then(()=>{
+      loadSkillChips();
+      loadGraphChips();
+    });
+    loadSignals();
+    loadHealth();
   }
 
-  // ---- Search events ----
-  $('search-input').addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(e.target.value.trim()); });
-
-  // ---- Init ----
-  loadSkills().then(()=>{
-    loadSkillChips();
-    loadGraphChips();
-  });
-  loadSignals();
-  loadHealth();
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
 </script>
 
 <div id="guide-overlay">

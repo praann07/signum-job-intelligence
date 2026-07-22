@@ -8,9 +8,13 @@ and the interval is the only knob we need.
 import asyncio
 import signal
 
+from structlog import get_logger
+
 from app.core.logging import setup_logging
 from app.infrastructure.database.session import async_session_factory
 from app.infrastructure.ingestion.pipeline import run_pipeline
+
+logger = get_logger(__name__)
 
 INTERVAL_SECONDS = 6 * 60 * 60
 
@@ -20,15 +24,17 @@ async def _run_loop() -> None:
     # for up to 6h. One fetch now, then the regular interval.
     async with async_session_factory() as session:
         try:
-            print(f"[scheduler] initial ingest: {await run_pipeline(session)}")
+            result = await run_pipeline(session)
+            logger.info("scheduler_initial_ingest", result=result)
         except Exception as e:
-            print(f"[scheduler] initial ingest failed: {e}")
+            logger.error("scheduler_initial_ingest_failed", error=str(e))
     while True:
         async with async_session_factory() as session:
             try:
-                print(f"[scheduler] ingest: {await run_pipeline(session)}")
+                result = await run_pipeline(session)
+                logger.info("scheduler_ingest", result=result)
             except Exception as e:  # ponytail: one failed run must not kill the loop
-                print(f"[scheduler] ingest failed: {e}")
+                logger.error("scheduler_ingest_failed", error=str(e))
         await asyncio.sleep(INTERVAL_SECONDS)
 
 
@@ -37,11 +43,11 @@ def main() -> None:
     stop = asyncio.Event()
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
-    print("[scheduler] started — ingesting every 6h. Ctrl+C to stop.")
+    logger.info("scheduler_started", interval_hours=6)
     try:
         asyncio.run(_run_loop())
     finally:
-        print("[scheduler] stopped.")
+        logger.info("scheduler_stopped")
 
 
 if __name__ == "__main__":

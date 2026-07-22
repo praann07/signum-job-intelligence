@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from structlog import get_logger
 
 from app.api.errors import general_error_handler
 from app.api.middleware import AuthMiddleware, RateLimitMiddleware, RequestLoggingMiddleware
@@ -24,6 +25,8 @@ from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.infrastructure.cache.redis import close_redis
 
+logger = get_logger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -37,17 +40,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         from app.infrastructure.indexing.bitmap import BitmapIndex
 
         async with async_session_factory() as session:
-            db_count = await session.execute(
-                text("SELECT COUNT(*) FROM job_events")
-            )
+            db_count = await session.execute(text("SELECT COUNT(*) FROM job_events"))
             total = db_count.scalar() or 0
             bm = BitmapIndex(get_settings().redis_url)
             counter = await bm.redis.get("posting_counter")
             if not counter and total > 0:
                 rebuilt = await bm.rebuild_from_db(session)
-                print(f"[startup] rebuilt bitmap index from DB: {rebuilt} postings")
+                logger.info("bitmap_rebuilt_from_db", postings=rebuilt)
     except Exception as e:  # ponytail: never block startup on a rebuild failure
-        print(f"[startup] bitmap rebuild skipped: {e}")
+        logger.warning("bitmap_rebuild_skipped", error=str(e))
     yield
     await close_redis()
 
@@ -80,11 +81,13 @@ def create_app() -> FastAPI:  # noqa: D103
     async def no_cache_dashboard(request: Request, call_next: Callable[[Request], Any]) -> Response:
         response = await call_next(request)
         if request.url.path.startswith("/dashboard"):
-            response.headers.update({
-                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-                "Pragma": "no-cache",
-                "Expires": "0",
-            })
+            response.headers.update(
+                {
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                }
+            )
         return response  # type: ignore[no-any-return]
 
     app.include_router(health_router, prefix="/api/v1", tags=["system"])

@@ -46,14 +46,21 @@ class BitmapIndex:
         title: str | None = None,
         source: str | None = None,
         url: str | None = None,
+        posted_at: str | None = None,
     ) -> None:
         pipe = self.redis.pipeline()
         pipe.set(f"idx:{posting_number}", str(event_id))
-        # ponytail: stash title/source/url so bitmap search returns full rows
-        # without a DB join.
-        pipe.hset(f"meta:{posting_number}", mapping={
-            "title": title or "", "source": source or "", "url": url or "",
-        })
+        # ponytail: stash title/source/url/posted_at so bitmap search returns
+        # full rows without a DB join.
+        pipe.hset(
+            f"meta:{posting_number}",
+            mapping={
+                "title": title or "",
+                "source": source or "",
+                "url": url or "",
+                "posted_at": posted_at or "",
+            },
+        )
         for s in skills:
             pipe.setbit(self._key("skill", s.lower()), posting_number, 1)
         for field, val in (("sen", seniority), ("country", country), ("size", company_size)):
@@ -118,11 +125,11 @@ class BitmapIndex:
         if not matched_idx:
             return []
 
-        # batched fetch of event id + meta (title/source/url) for the matches.
+        # batched fetch of event id + meta (title/source/url/posted_at) for the matches.
         pipe = self.redis.pipeline()
         for idx in matched_idx:
             pipe.get(f"idx:{idx}")
-            pipe.hmget(f"meta:{idx}", "title", "source", "url")
+            pipe.hmget(f"meta:{idx}", "title", "source", "url", "posted_at")
         vals = await pipe.execute()
 
         def _dec(v: bytes | str | None) -> str:
@@ -135,13 +142,16 @@ class BitmapIndex:
             meta = vals[i * 2 + 1]
             if not eid:
                 continue
-            out.append({
-                "event_id": eid.decode() if isinstance(eid, bytes) else eid,
-                "index": idx,
-                "title": _dec(meta[0]),
-                "source": _dec(meta[1]),
-                "url": _dec(meta[2]),
-            })
+            out.append(
+                {
+                    "event_id": eid.decode() if isinstance(eid, bytes) else eid,
+                    "index": idx,
+                    "title": _dec(meta[0]),
+                    "source": _dec(meta[1]),
+                    "url": _dec(meta[2]),
+                    "posted_at": _dec(meta[3]),
+                }
+            )
         return out
 
     async def rebuild_from_db(self, session: AsyncSession) -> int:
@@ -154,7 +164,6 @@ class BitmapIndex:
         """
         from sqlalchemy import text
 
-
         # ponytail: clear existing bitmap keys first so a partial rebuild can't
         # leave stale bits behind.
         for pat in ("bm:*", "idx:*", "meta:*", "posting_counter"):
@@ -166,7 +175,7 @@ class BitmapIndex:
             text(
                 """
                 SELECT e.event_id, e.title, e.source, e.url, e.seniority,
-                       e.country, em.size, js.skill
+                       e.country, em.size, js.skill, e.posted_at
                 FROM job_events e
                 LEFT JOIN employers em ON em.company_id = e.company_id
                 JOIN job_skills js ON js.event_id = e.event_id
@@ -186,6 +195,7 @@ class BitmapIndex:
                     "seniority": r[4],
                     "country": r[5],
                     "size": r[6],
+                    "posted_at": r[8].isoformat() if r[8] else None,
                 }
                 skills_by_event[eid] = []
             skills_by_event[eid].append(r[7])
@@ -208,6 +218,7 @@ class BitmapIndex:
                 title=str(data["title"]) if data["title"] else None,
                 source=str(data["source"]) if data["source"] else None,
                 url=str(data["url"]) if data["url"] else None,
+                posted_at=str(data["posted_at"]) if data.get("posted_at") else None,
             )
             count += 1
         return count

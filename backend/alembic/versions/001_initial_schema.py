@@ -18,24 +18,38 @@ depends_on: str | list[str] | None = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
+    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
     op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb")
 
     op.create_table(
         "employers",
-        sa.Column("company_id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("uuid_generate_v4()")),
+        sa.Column(
+            "company_id",
+            UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("uuid_generate_v4()"),
+        ),
         sa.Column("name", sa.Text(), unique=True, nullable=False),
         sa.Column("size", sa.Text()),
         sa.Column("industry", sa.Text()),
         sa.Column("url", sa.Text()),
         sa.Column("created_at", TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
-        sa.CheckConstraint("size IN ('seed', 'early', 'mid', 'late', 'public', 'unknown')", name="ck_employer_size"),
+        sa.CheckConstraint(
+            "size IN ('seed', 'early', 'mid', 'late', 'public', 'unknown')", name="ck_employer_size"
+        ),
     )
 
     op.create_table(
         "job_events",
-        sa.Column("event_id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("company_id", UUID(as_uuid=True), sa.ForeignKey("employers.company_id"), nullable=False),
+        sa.Column(
+            "event_id",
+            UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("uuid_generate_v4()"),
+        ),
+        sa.Column(
+            "company_id", UUID(as_uuid=True), sa.ForeignKey("employers.company_id"), nullable=False
+        ),
         sa.Column("source", sa.Text(), nullable=False),
         sa.Column("location", sa.Text()),
         sa.Column("country", sa.Text(), nullable=False, server_default="unknown"),
@@ -44,19 +58,33 @@ def upgrade() -> None:
         sa.Column("posted_at", TIMESTAMP(timezone=True), nullable=False),
         sa.Column("ingested_at", TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
         sa.Column("fingerprint", sa.Text(), unique=True, nullable=False),
-        sa.CheckConstraint("seniority IN ('intern', 'junior', 'mid', 'senior', 'lead', 'unknown')", name="ck_job_seniority"),
+        sa.CheckConstraint(
+            "seniority IN ('intern', 'junior', 'mid', 'senior', 'lead', 'unknown')",
+            name="ck_job_seniority",
+        ),
     )
 
     op.create_index("idx_jobs_posted_at", "job_events", [sa.text("posted_at DESC")])
-    op.create_index("idx_jobs_country_seniority", "job_events", ["country", "seniority", sa.text("posted_at DESC")])
+    op.create_index(
+        "idx_jobs_country_seniority",
+        "job_events",
+        ["country", "seniority", sa.text("posted_at DESC")],
+    )
 
     op.create_table(
         "job_skills",
-        sa.Column("event_id", UUID(as_uuid=True), sa.ForeignKey("job_events.event_id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "event_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("job_events.event_id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
         sa.Column("skill", sa.Text(), primary_key=True),
         sa.Column("is_known", sa.Boolean(), server_default=sa.text("TRUE")),
         sa.Column("extraction_confidence", sa.Float()),
-        sa.CheckConstraint("extraction_confidence >= 0 AND extraction_confidence <= 1", name="ck_confidence_range"),
+        sa.CheckConstraint(
+            "extraction_confidence >= 0 AND extraction_confidence <= 1", name="ck_confidence_range"
+        ),
     )
     op.create_index("idx_skills_skill", "job_skills", ["skill"])
 
@@ -68,7 +96,10 @@ def upgrade() -> None:
         sa.Column("is_active", sa.Boolean(), server_default=sa.text("TRUE")),
         sa.Column("added_at", TIMESTAMP(timezone=True), server_default=sa.text("NOW()")),
         sa.Column("added_by", sa.Text(), nullable=False),
-        sa.CheckConstraint("category IN ('language', 'framework', 'tool', 'cloud', 'database', 'concept', 'platform')", name="ck_skill_category"),
+        sa.CheckConstraint(
+            "category IN ('language', 'framework', 'tool', 'cloud', 'database', 'concept', 'platform')",
+            name="ck_skill_category",
+        ),
         sa.CheckConstraint("added_by IN ('seed', 'discovered', 'manual')", name="ck_provenance"),
     )
 
@@ -85,7 +116,11 @@ def upgrade() -> None:
         sa.CheckConstraint("skill_a < skill_b", name="ck_pair_order"),
     )
     op.execute("SELECT create_hypertable('skill_cooccurrence', 'window_start')")
-    op.create_index("idx_cooc_breakout", "skill_cooccurrence", [sa.text("breakout_score DESC"), sa.text("window_start DESC")])
+    op.create_index(
+        "idx_cooc_breakout",
+        "skill_cooccurrence",
+        [sa.text("breakout_score DESC"), sa.text("window_start DESC")],
+    )
 
     op.create_table(
         "emerging_candidates",
@@ -97,7 +132,12 @@ def upgrade() -> None:
         sa.Column("reviewed_at", TIMESTAMP(timezone=True)),
         sa.Column("rejection_reason", sa.Text()),
     )
-    op.create_index("idx_emerging_unreviewed", "emerging_candidates", [sa.text("first_seen DESC")], postgresql_where=sa.text("reviewed = FALSE"))
+    op.create_index(
+        "idx_emerging_unreviewed",
+        "emerging_candidates",
+        [sa.text("first_seen DESC")],
+        postgresql_where=sa.text("reviewed = FALSE"),
+    )
 
 
 def downgrade() -> None:

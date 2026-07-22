@@ -4,7 +4,6 @@ Revision ID: 002
 Revises: 001
 """
 
-
 from alembic import op
 
 revision: str = "002"
@@ -24,7 +23,9 @@ def upgrade() -> None:
     op.execute("ALTER TABLE job_events DROP CONSTRAINT IF EXISTS job_events_pkey")
     op.execute("ALTER TABLE job_events ADD PRIMARY KEY (event_id, posted_at)")
     op.execute("ALTER TABLE job_skills ADD COLUMN IF NOT EXISTS posted_at TIMESTAMP WITH TIME ZONE")
-    op.execute("UPDATE job_skills s SET posted_at = e.posted_at FROM job_events e WHERE s.event_id = e.event_id")
+    op.execute(
+        "UPDATE job_skills s SET posted_at = e.posted_at FROM job_events e WHERE s.event_id = e.event_id"
+    )
     op.execute("ALTER TABLE job_skills ALTER COLUMN posted_at SET NOT NULL")
     op.execute(
         "ALTER TABLE job_skills ADD FOREIGN KEY (event_id, posted_at) "

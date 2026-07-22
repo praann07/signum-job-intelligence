@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +42,13 @@ class PostingInput(BaseModel):
 class IngestRequest(BaseModel):
     postings: list[PostingInput]
 
+    @field_validator("postings")
+    @classmethod
+    def check_size(cls, v: list[PostingInput]) -> list[PostingInput]:
+        if len(v) > 500:
+            raise ValueError("Max 500 postings per ingest batch")
+        return v
+
 
 _bm: BitmapIndex | None = None
 
@@ -59,7 +66,7 @@ async def ingest_postings(
 ) -> dict[str, object]:
     inserted = 0
     skipped = 0
-    bm = _get_bm()
+    pending: list[dict[str, object]] = []
     for p in body.postings:
         fp = _fingerprint(p.title, p.company, p.location)
         existing = await session.execute(select(JobEvent).where(JobEvent.fingerprint == fp))
@@ -96,15 +103,15 @@ async def ingest_postings(
             )
         inserted += 1
 
-        posting_number = await bm.next_index()
-        skill_names = [s.skill for s in p.skills]
-        await bm.add_posting(
-            posting_number,
-            event.event_id,
-            skill_names,
-            seniority=p.seniority or detect_seniority(p.title),
-            country=p.country if p.country not in ("unknown",) else None,
-            company_size=employer.size if employer.size != "unknown" else None,
+        pending.append(
+            {
+                "event_id": event.event_id,
+                "skills": [s.skill for s in p.skills],
+                "seniority": p.seniority or detect_seniority(p.title),
+                "country": p.country if p.country not in ("unknown",) else None,
+                "company_size": employer.size if employer.size != "unknown" else None,
+                "posted_at": posted.isoformat() if posted else None,
+            }
         )
 
     try:
@@ -116,6 +123,22 @@ async def ingest_postings(
         all_events = result.scalars().all()
         inserted = len(all_events)
         skipped = sum(1 for _ in body.postings) - inserted
+        pending.clear()
+
+    # ponytail: bitmap writes MUST happen AFTER successful DB commit so a
+    # failed commit can't leave the index with stale data that has no DB row.
+    bm = _get_bm()
+    for p in pending:
+        posting_number = await bm.next_index()
+        await bm.add_posting(
+            posting_number,
+            p["event_id"],
+            p["skills"],
+            seniority=p["seniority"],
+            country=p["country"],
+            company_size=p["company_size"],
+            posted_at=p["posted_at"],
+        )
 
     logger.info("ingest_complete", inserted=inserted, skipped=skipped)
     return {"inserted": inserted, "skipped": skipped}

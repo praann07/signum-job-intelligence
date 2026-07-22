@@ -58,9 +58,7 @@ class JobEvent(Base):
     source: Mapped[str] = mapped_column(Text, nullable=False)
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
     location: Mapped[str | None] = mapped_column(Text)
-    country: Mapped[str] = mapped_column(
-        Text, nullable=False, default="unknown"
-    )
+    country: Mapped[str] = mapped_column(Text, nullable=False, default="unknown")
     seniority: Mapped[str | None] = mapped_column(Text)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     ingested_at: Mapped[datetime] = mapped_column(
@@ -79,13 +77,9 @@ class JobEvent(Base):
 class JobSkill(Base):
     __tablename__ = "job_skills"
 
-    event_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True
-    )
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     skill: Mapped[str] = mapped_column(Text, primary_key=True)
-    posted_at: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False
-    )
+    posted_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     is_known: Mapped[bool] = mapped_column(Boolean, default=True)
     extraction_confidence: Mapped[float | None] = mapped_column(Float)
 
@@ -132,24 +126,30 @@ class SkillCooccurrence(Base):
 
     skill_a: Mapped[str] = mapped_column(Text, primary_key=True)
     skill_b: Mapped[str] = mapped_column(Text, primary_key=True)
-    window_start: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), primary_key=True
-    )
-    window_end: Mapped[datetime] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=False
-    )
+    window_start: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), primary_key=True)
+    window_end: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     pair_count: Mapped[int] = mapped_column(Integer, default=0)
-    first_seen: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True)
-    )
-    last_seen: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True)
-    )
+    first_seen: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    last_seen: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     breakout_score: Mapped[float | None] = mapped_column(Float)
 
-    __table_args__ = (
-        CheckConstraint("skill_a < skill_b", name="ck_pair_order"),
+    __table_args__ = (CheckConstraint("skill_a < skill_b", name="ck_pair_order"),)
+
+
+class PipelineRun(Base):
+    __tablename__ = "pipeline_runs"
+
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    started_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    fetched: Mapped[int] = mapped_column(Integer, default=0)
+    inserted: Mapped[int] = mapped_column(Integer, default=0)
+    skipped: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text)
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
 
 
 class EmergingCandidate(Base):
@@ -162,7 +162,5 @@ class EmergingCandidate(Base):
     occurrence_count: Mapped[int] = mapped_column(Integer, default=1)
     reviewed: Mapped[bool] = mapped_column(Boolean, default=False)
     accepted: Mapped[bool | None] = mapped_column(Boolean)
-    reviewed_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True)
-    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     rejection_reason: Mapped[str | None] = mapped_column(Text)

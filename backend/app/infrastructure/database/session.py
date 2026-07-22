@@ -25,9 +25,7 @@ def get_engine() -> AsyncEngine:
     global _engine, _engine_loop
     loop = get_running_loop()
     if _engine is None or _engine_loop is not loop:
-        _engine = create_async_engine(
-            _settings.database_url, echo=_settings.log_level == "DEBUG"
-        )
+        _engine = create_async_engine(_settings.database_url, echo=_settings.log_level == "DEBUG")
         _engine_loop = loop
     return _engine
 

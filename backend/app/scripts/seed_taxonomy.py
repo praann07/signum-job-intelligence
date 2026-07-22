@@ -188,19 +188,23 @@ SEED: list[tuple[str, str, list[str]]] = [
 ]
 
 CATEGORY_FIX = {
-    "language": "language", "framework": "framework", "tool": "tool",
-    "cloud": "cloud", "database": "database", "concept": "concept",
+    "language": "language",
+    "framework": "framework",
+    "tool": "tool",
+    "cloud": "cloud",
+    "database": "database",
+    "concept": "concept",
     "platform": "platform",
 }
+
 
 async def seed() -> None:
     added = 0
     async with async_session_factory() as session:
         # ponytail: load existing once to make the insert idempotent.
         from sqlalchemy import select
-        existing = set(
-            r[0] for r in (await session.execute(select(SkillTaxonomy.skill))).all()
-        )
+
+        existing = set(r[0] for r in (await session.execute(select(SkillTaxonomy.skill))).all())
         for skill, cat, aliases in SEED:
             if skill in existing:
                 continue
@@ -219,6 +223,8 @@ async def seed() -> None:
         await session.commit()
     print(f"seeded {added} new skills ({len(SEED) - added} already present)")
 
+
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(seed())

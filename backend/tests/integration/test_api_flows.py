@@ -41,9 +41,7 @@ async def test_ingest_requires_auth(api_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_ingest_and_search_flow(
-    api_client: AsyncClient, auth_headers: dict[str, str]
-):
+async def test_ingest_and_search_flow(api_client: AsyncClient, auth_headers: dict[str, str]):
     payload = {
         "postings": [
             {
@@ -65,9 +63,7 @@ async def test_ingest_and_search_flow(
     assert body["inserted"] == 1
 
     # Search should find the posting by skill
-    search_resp = await api_client.get(
-        "/api/v1/search", params={"skills": ["python"], "limit": 10}
-    )
+    search_resp = await api_client.get("/api/v1/search", params={"skills": ["python"], "limit": 10})
     assert search_resp.status_code == 200
     sbody = search_resp.json()
     assert sbody["matches"] >= 1
@@ -75,9 +71,7 @@ async def test_ingest_and_search_flow(
 
 
 @pytest.mark.asyncio
-async def test_ingest_dedup_by_fingerprint(
-    api_client: AsyncClient, auth_headers: dict[str, str]
-):
+async def test_ingest_dedup_by_fingerprint(api_client: AsyncClient, auth_headers: dict[str, str]):
     payload = {
         "postings": [
             {

@@ -9,4 +9,5 @@ async def test_health_endpoint(api_client: AsyncClient):
     data = response.json()
     assert "status" in data
     assert "database" in data
+    assert "redis" in data
     assert "postings" in data
