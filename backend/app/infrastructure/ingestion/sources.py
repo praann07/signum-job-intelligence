@@ -146,6 +146,49 @@ async def fetch_naukri(
     return out
 
 
+async def fetch_adzuna(
+    app_id: str = "", app_key: str = "", country: str = "gb", query: str = "software engineer"
+) -> list[RawPosting]:
+    """Adzuna job search API — free tier, requires app_id + app_key.
+
+    Falls back to empty list (with a logged warning) when no credentials are set
+    so the pipeline still runs on the key-less sources.
+    """
+    if not app_id or not app_key:
+        logger.warning("Adzuna skipped: set ADZUNA_APP_ID and ADZUNA_API_KEY in .env")
+        return []
+    out: list[RawPosting] = []
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await _fetch_json(
+            c,
+            "GET",
+            f"https://api.adzuna.com/v1/api/jobs/{country}/search/1",
+            params={
+                "app_id": app_id,
+                "app_key": app_key,
+                "results_per_page": 50,
+                "what": query,
+                "content-type": "application/json",
+            },
+        )
+        data = r.json().get("results", [])
+    for j in data:
+        out.append(
+            RawPosting(
+                title=j.get("title", ""),
+                company=j.get("company", {}).get("display_name", "unknown"),
+                location=j.get("location", {}).get("display_name", "Remote"),
+                country=country.upper(),
+                tags=[],
+                description=(j.get("description") or "")[:4000],
+                url=j.get("redirect_url"),
+                source="Adzuna",
+                posted_at=j.get("created"),
+            )
+        )
+    return out
+
+
 # ponytail: HN "Who is Hiring" comments are free-text. We pull a title from the
 # first line (before a pipe/location marker) and a company from the start. This
 # is heuristic but the description text carries the real skill signal for NER.

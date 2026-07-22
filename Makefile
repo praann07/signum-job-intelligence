@@ -1,43 +1,33 @@
-# Signum — one-command workflow
-# Usage:  make up        # build + start everything (DB, Redis, API, dashboard, scheduler)
-#         make ingest    # trigger a real-data ingestion run
-#         make signals   # show emerging skill pairs
-#         make bench     # run the bitmap-vs-btree benchmark
-#         make test      # run backend tests
-#         make lint      # ruff
-#         make down      # stop everything
-
-COMPOSE = docker compose
-API = http://localhost:8000/api/v1
-KEY = dev-api-key-change-in-production
+.PHONY: up down build test lint fmt migrate ingest shell
 
 up:
-	$(COMPOSE) up --build -d
-	@echo "Waiting for API..."
-	@for i in 1 2 3 4 5 6 7 8 9 10; do \
-		curl -s $(API)/health >/dev/null 2>&1 && break; \
-		sleep 2; \
-	done
-	@echo "Priming with real data (Remotive + Arbeitnow)..."
-	curl -s -X POST $(API)/pipeline/run -H "Authorization: Bearer $(KEY)" | head -c 200; echo
+	docker compose up -d
 
-ingest:
-	curl -s -X POST $(API)/pipeline/run -H "Authorization: Bearer $(KEY)" | python -m json.tool
+down:
+	docker compose down
 
-signals:
-	curl -s "$(API)/signals?limit=20" | python -m json.tool
-
-status:
-	curl -s $(API)/pipeline/status | python -m json.tool
-
-bench:
-	cd backend && python -m scripts.benchmark
+build:
+	docker compose build
 
 test:
-	cd backend && python -m pytest -q
+	cd backend && python -m pytest tests/ -v
 
 lint:
 	cd backend && ruff check .
 
-down:
-	$(COMPOSE) down
+fmt:
+	cd backend && ruff format .
+
+migrate:
+	docker exec signum-backend-1 alembic upgrade head
+
+ingest:
+	@API_KEY=$$(grep -E '^API_KEY=' .env 2>/dev/null | head -1 | cut -d= -f2); \
+	if [ -z "$$API_KEY" ]; then \
+		echo "Error: API_KEY not found in .env"; exit 1; \
+	fi; \
+	curl -s -X POST http://localhost:8000/api/v1/pipeline/run \
+		-H "Authorization: Bearer $$API_KEY" | python -m json.tool
+
+shell:
+	docker compose exec backend sh

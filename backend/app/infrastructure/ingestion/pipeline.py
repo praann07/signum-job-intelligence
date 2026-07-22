@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -23,6 +23,7 @@ from app.infrastructure.ingestion.common import (
 )
 from app.infrastructure.ingestion.sources import (
     RawPosting,
+    fetch_adzuna,
     fetch_arbeitnow,
     fetch_hackernews,
     fetch_naukri,
@@ -129,11 +130,13 @@ async def ingest_raw(session: AsyncSession, p: RawPosting) -> tuple[str, _Pendin
 async def run_pipeline(session: AsyncSession) -> dict[str, object]:
     bm = BitmapIndex(get_settings().redis_url)
 
+    s = get_settings()
     source_fetchers: list[tuple[str, object]] = [
         ("remotive", fetch_remotive()),
         ("arbeitnow", fetch_arbeitnow()),
         ("hackernews", fetch_hackernews()),
-        ("naukri", fetch_naukri(get_settings().firecrawl_api_key)),
+        ("adzuna", fetch_adzuna(s.adzuna_app_id, s.adzuna_api_key)),
+        ("naukri", fetch_naukri(s.firecrawl_api_key)),
     ]
 
     # ponytail: one failing source must not abort the whole pipeline. Process
@@ -199,6 +202,18 @@ async def run_pipeline(session: AsyncSession) -> dict[str, object]:
         total_skipped += skipped
 
     await session.commit()
+
+    # ponytail: refresh the 30-day co-occurrence CAGG so /signals can read
+    # materialized data instead of scanning raw tables.
+    try:
+        await session.execute(
+            text("CALL refresh_continuous_aggregate("
+                 "'cooccurrence_30d', NOW() - INTERVAL '31 days', NOW())")
+        )
+        await session.commit()
+    except Exception as e:
+        logger.warning("cagg_refresh_failed", error=str(e))
+
     return {
         "fetched": total_fetched,
         "inserted": total_inserted,

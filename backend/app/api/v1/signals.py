@@ -9,6 +9,37 @@ from app.infrastructure.signals import breakout_score
 
 router = APIRouter()
 
+_CAGG_QUERY = """
+    SELECT skill_a, skill_b,
+        SUM(pair_count)::int AS total,
+        MIN(first_seen) AS first_seen,
+        MAX(last_seen) AS last_seen,
+        SUM(pair_count) FILTER (
+            WHERE bucket >= NOW() - INTERVAL '7 days'
+        )::int AS last7,
+        COALESCE(SUM(pair_count), 0)::int AS recent
+    FROM cooccurrence_30d
+    WHERE bucket >= NOW() - INTERVAL '30 days'::interval
+    GROUP BY skill_a, skill_b
+    HAVING SUM(pair_count) >= 3
+"""
+
+_RAW_QUERY = """
+    SELECT
+        a.skill AS skill_a,
+        b.skill AS skill_b,
+        COUNT(*) AS pair_count,
+        MIN(e.posted_at) AS first_seen,
+        MAX(e.posted_at) AS last_seen,
+        COUNT(*) FILTER (WHERE e.posted_at >= NOW() - INTERVAL '7 days') AS last7,
+        COUNT(*) FILTER (WHERE e.posted_at >= NOW() - (:window || ' days')::interval) AS recent
+    FROM job_skills a
+    JOIN job_skills b ON a.event_id = b.event_id AND a.skill < b.skill
+    JOIN job_events e ON e.event_id = a.event_id
+    GROUP BY a.skill, b.skill
+    HAVING COUNT(*) >= 3
+"""
+
 
 @router.get("/signals")
 async def signals(
@@ -16,24 +47,27 @@ async def signals(
     window_days: int = Query(30, le=365),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, object]:
-    rows = await session.execute(
-        text("""
-        SELECT
-            a.skill AS skill_a,
-            b.skill AS skill_b,
-            COUNT(*) AS pair_count,
-            MIN(e.posted_at) AS first_seen,
-            MAX(e.posted_at) AS last_seen,
-            COUNT(*) FILTER (WHERE e.posted_at >= NOW() - INTERVAL '7 days') AS last7,
-            COUNT(*) FILTER (WHERE e.posted_at >= NOW() - (:window || ' days')::interval) AS recent
-        FROM job_skills a
-        JOIN job_skills b ON a.event_id = b.event_id AND a.skill < b.skill
-        JOIN job_events e ON e.event_id = a.event_id
-        GROUP BY a.skill, b.skill
-        HAVING COUNT(*) >= 3
-    """),
-        {"window": str(window_days)},
-    )
+    # ponytail: for window <= 30 days, use the materialised CAGG (faster).
+    # Fall back to raw tables for larger windows or when CAGG is empty.
+    use_cagg = window_days <= 30
+    params: dict[str, object] = {"window": str(window_days)}
+    if use_cagg:
+        try:
+            rows = await session.execute(text(_CAGG_QUERY))
+            # If CAGG returns nothing, fall through to raw tables
+            if rows.rowcount is None or rows.rowcount > 0:
+                use_cagg = True
+            _rows = rows.fetchall()
+            if not _rows:
+                use_cagg = False
+                rows = await session.execute(text(_RAW_QUERY), params)
+            else:
+                rows = _rows
+        except Exception:
+            use_cagg = False
+            rows = await session.execute(text(_RAW_QUERY), params)
+    else:
+        rows = await session.execute(text(_RAW_QUERY), params)
 
     now = datetime.now(UTC)
     scored = []
@@ -57,6 +91,7 @@ async def signals(
                 "velocity": velocity,
                 "novelty": round(novelty, 4),
                 "breakout_score": score,
+                "from_cagg": use_cagg,
             }
         )
 

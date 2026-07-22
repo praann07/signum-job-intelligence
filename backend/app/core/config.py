@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     firecrawl_api_key: str = Field(
         default="", description="Firecrawl API key for India job scraping"
     )
+    adzuna_app_id: str = Field(
+        default="", description="Adzuna API app ID (free tier available at developer.adzuna.com)"
+    )
+    adzuna_api_key: str = Field(
+        default="", description="Adzuna API key (free tier available at developer.adzuna.com)"
+    )
 
     model_config = {
         "env_file": ".env",

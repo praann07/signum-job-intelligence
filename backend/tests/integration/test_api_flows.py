@@ -164,3 +164,78 @@ async def test_bitmap_rebuild_from_db(
     res = await bm.search(["rust"])
     assert len(res) >= 1
     assert any("Rust" in r["title"] for r in res)
+
+
+@pytest.mark.asyncio
+async def test_ingest_wrong_key_returns_401(api_client: AsyncClient):
+    payload = {
+        "postings": [
+            {
+                "title": "Test",
+                "company": "TestCorp",
+                "skills": [{"skill": "python", "is_known": True}],
+            }
+        ]
+    }
+    resp = await api_client.post(
+        "/api/v1/ingest", json=payload, headers={"Authorization": "Bearer wrong-key"}
+    )
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_ingest_batch_limit_enforced(api_client: AsyncClient, auth_headers):
+    postings = [{"title": f"Job {i}", "company": "Corp", "skills": []} for i in range(501)]
+    payload = {"postings": postings}
+    resp = await api_client.post("/api/v1/ingest", json=payload, headers=auth_headers)
+    assert resp.status_code == 422  # validation error
+
+
+@pytest.mark.asyncio
+async def test_search_empty_db_returns_no_results(api_client: AsyncClient):
+    resp = await api_client.get("/api/v1/search", params={"skills": ["python"]})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["matches"] == 0
+
+
+@pytest.mark.asyncio
+async def test_signals_empty_db_returns_empty_list(api_client: AsyncClient):
+    resp = await api_client.get("/api/v1/signals")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "signals" in body
+    assert len(body["signals"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_extract_empty_text(api_client: AsyncClient, auth_headers):
+    resp = await api_client.post(
+        "/api/v1/extract",
+        json={"text": "", "title": ""},
+        headers=auth_headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["known_count"] == 0
+    assert body["emerging_count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_search_returns_posted_at(api_client: AsyncClient, auth_headers):
+    payload = {
+        "postings": [
+            {
+                "title": "Test PostedAt",
+                "company": "DateCorp",
+                "posted_at": "2026-07-15T10:00:00Z",
+                "skills": [{"skill": "python", "is_known": True}],
+            }
+        ]
+    }
+    await api_client.post("/api/v1/ingest", json=payload, headers=auth_headers)
+    resp = await api_client.get("/api/v1/search", params={"skills": ["python"]})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["matches"] > 0
+    assert body["results"][0].get("posted_at") is not None

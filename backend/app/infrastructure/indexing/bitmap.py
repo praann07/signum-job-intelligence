@@ -200,27 +200,40 @@ class BitmapIndex:
                 skills_by_event[eid] = []
             skills_by_event[eid].append(r[7])
 
+        # ponytail: batch 200 postings per Redis pipeline instead of one
+        # pipeline per posting (N round-trips -> N/200 round-trips).
+        batch_size = 200
+        items = list(events.items())
         count = 0
-        for eid, data in events.items():
-            skills = skills_by_event[eid]
-            n = await self.next_index()
-            await self.add_posting(
-                n,
-                _uuid(eid),
-                [str(s) for s in skills],
-                seniority=str(data["seniority"]) if data["seniority"] else None,
-                country=(
-                    str(data["country"])
-                    if data["country"] not in (None, "unknown", "remote", "eu")
-                    else None
-                ),
-                company_size=str(data["size"]) if data["size"] not in (None, "unknown") else None,
-                title=str(data["title"]) if data["title"] else None,
-                source=str(data["source"]) if data["source"] else None,
-                url=str(data["url"]) if data["url"] else None,
-                posted_at=str(data["posted_at"]) if data.get("posted_at") else None,
-            )
-            count += 1
+        for start in range(0, len(items), batch_size):
+            batch = items[start : start + batch_size]
+            pipe = self.redis.pipeline()
+            for eid, data in batch:
+                skills = [str(s) for s in skills_by_event[eid]]
+                n = count + 1
+                pipe.set(f"idx:{n}", eid)
+                pipe.hset(
+                    f"meta:{n}",
+                    mapping={
+                        "title": str(data["title"]) if data["title"] else "",
+                        "source": str(data["source"]) if data["source"] else "",
+                        "url": str(data["url"]) if data["url"] else "",
+                        "posted_at": str(data.get("posted_at") or ""),
+                    },
+                )
+                for s in skills:
+                    pipe.setbit(self._key("skill", s.lower()), n, 1)
+                if data.get("seniority"):
+                    pipe.setbit(self._key("sen", str(data["seniority"]).lower()), n, 1)
+                country = str(data["country"]) if data.get("country") else ""
+                if country not in ("", "unknown", "remote", "eu"):
+                    pipe.setbit(self._key("country", country.lower()), n, 1)
+                size = str(data["size"]) if data.get("size") else ""
+                if size not in ("", "unknown"):
+                    pipe.setbit(self._key("size", size.lower()), n, 1)
+                count += 1
+            await pipe.execute()
+        await self.redis.set("posting_counter", count)
         return count
 
 
