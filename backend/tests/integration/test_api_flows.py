@@ -239,3 +239,70 @@ async def test_search_returns_posted_at(api_client: AsyncClient, auth_headers):
     body = resp.json()
     assert body["matches"] > 0
     assert body["results"][0].get("posted_at") is not None
+
+
+@pytest.mark.asyncio
+async def test_trends_endpoint(api_client: AsyncClient, auth_headers):
+    resp = await api_client.get(
+        "/api/v1/trends", params={"skill": "python", "interval": "7 days", "months": 6}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["skill"] == "python"
+    assert body["interval"] == "7 days"
+    assert body["months"] == 6
+    assert "data" in body
+    assert "trend" in body
+    assert "total" in body
+
+
+@pytest.mark.asyncio
+async def test_trends_with_ingested_data(api_client: AsyncClient, auth_headers):
+    payload = {
+        "postings": [
+            {
+                "title": "Trend Test",
+                "company": "TrendCorp",
+                "posted_at": "2026-07-01T10:00:00Z",
+                "skills": [{"skill": "python", "is_known": True}],
+            }
+        ]
+    }
+    await api_client.post("/api/v1/ingest", json=payload, headers=auth_headers)
+    resp = await api_client.get(
+        "/api/v1/trends", params={"skill": "python", "interval": "30 days", "months": 3}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] >= 1
+    assert len(body["data"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_trends_empty_skill_returns_422(api_client: AsyncClient):
+    resp = await api_client.get("/api/v1/trends", params={"skill": "", "interval": "7 days"})
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_signals_with_pmi(api_client: AsyncClient, auth_headers):
+    payload = {
+        "postings": [
+            {
+                "title": "PMI Test",
+                "company": "PMICorp",
+                "skills": [
+                    {"skill": "python", "is_known": True},
+                    {"skill": "docker", "is_known": True},
+                ],
+            }
+        ]
+    }
+    await api_client.post("/api/v1/ingest", json=payload, headers=auth_headers)
+    resp = await api_client.get("/api/v1/signals", params={"limit": 10, "include_pmi": True})
+    assert resp.status_code == 200
+    body = resp.json()
+    if body["signals"]:
+        sig = body["signals"][0]
+        assert "pmi" in sig
+        assert "pmi_total_pairs" in body

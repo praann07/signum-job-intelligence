@@ -265,7 +265,8 @@
     <button class="active" data-tab="signals"><span class="idx">[1]</span>SIGNALS</button>
     <button data-tab="search"><span class="idx">[2]</span>SEARCH</button>
     <button data-tab="graph"><span class="idx">[3]</span>GRAPH</button>
-    <button data-tab="system"><span class="idx">[4]</span>SYSTEM</button>
+    <button data-tab="trends"><span class="idx">[4]</span>TRENDS</button>
+    <button data-tab="system"><span class="idx">[5]</span>SYSTEM</button>
   </nav>
 </header>
 
@@ -353,6 +354,31 @@
     <div class="chip-row" id="graph-chips"></div>
   </section>
 
+  <!-- TRENDS -->
+  <section id="trends">
+    <div class="panel-title">Skill demand over time</div>
+    <div class="searchbar">
+      <span>&gt;</span>
+      <input type="text" id="trends-input" placeholder="pick a skill, e.g. Python..." />
+    </div>
+    <div id="trends-chart-area" style="background:var(--panel);border:1px solid var(--border);padding:20px;min-height:220px;display:flex;align-items:center;justify-content:center;">
+      <div id="trends-status" style="font-family:var(--mono);font-size:13px;color:var(--text-muted);">Type a skill above or click a chip.</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center;margin:14px 0;">
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);letter-spacing:.04em;">INTERVAL</span>
+      <button class="btn trend-int" data-days="1" style="font-size:10px;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-muted)">1D</button>
+      <button class="btn trend-int active" data-days="7" style="font-size:10px;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-muted)">7D</button>
+      <button class="btn trend-int" data-days="30" style="font-size:10px;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-muted)">30D</button>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-left:16px;letter-spacing:.04em;">RANGE</span>
+      <button class="btn trend-mo" data-mo="3" style="font-size:10px;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-muted)">3M</button>
+      <button class="btn trend-mo active" data-mo="6" style="font-size:10px;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-muted)">6M</button>
+      <button class="btn trend-mo" data-mo="12" style="font-size:10px;padding:4px 8px;background:transparent;border:1px solid var(--border);color:var(--text-muted)">12M</button>
+    </div>
+    <div id="trends-meta" style="font-family:var(--mono);font-size:12px;color:var(--text-muted);margin-bottom:14px;"></div>
+    <div class="panel-title">Explore skills</div>
+    <div class="chip-row" id="trends-chips"></div>
+  </section>
+
   <!-- SYSTEM -->
   <section id="system">
     <div class="panel-title">Health</div>
@@ -367,6 +393,7 @@
         <div class="sys-row"><span class="k"><code>/api/v1/signals</code></span><span class="v ok">GET</span></div>
         <div class="sys-row"><span class="k"><code>/api/v1/search</code></span><span class="v ok">GET</span></div>
         <div class="sys-row"><span class="k"><code>/api/v1/graph</code></span><span class="v ok">GET</span></div>
+        <div class="sys-row"><span class="k"><code>/api/v1/trends</code></span><span class="v ok">GET</span></div>
         <div class="sys-row"><span class="k"><code>/api/v1/emerging</code></span><span class="v ok">GET</span></div>
         <div class="sys-row"><span class="k"><code>/api/v1/taxonomy</code></span><span class="v ok">GET</span></div>
         <div class="sys-row"><span class="k"><code>/api/v1/metrics</code></span><span class="v ok">GET</span></div>
@@ -586,8 +613,58 @@
     renderChips('graph-chips', (s)=>loadGraphPreview(s), ['SQL','Python','Kubernetes']);
   }
 
-  // ---- System ----
-  async function loadHealth(){
+  // ---- Trends ----
+  let trendSkill = 'Python', trendInterval = '7 days', trendMonths = 6;
+
+  function renderTrendChart(data, trend){
+    const area = $('trends-chart-area');
+    if(!data || data.length < 2){
+      area.innerHTML = '<div style="font-family:var(--mono);font-size:13px;color:var(--text-muted);">Not enough data for a trend line.</div>';
+      return;
+    }
+    const w=Math.max(600, area.clientWidth-40), h=200, pad={t:16,r:20,b:32,l:50};
+    const iw=w-pad.l-pad.r, ih=h-pad.t-pad.b;
+    const vals=data.map(d=>d.count), max=Math.max(...vals), min=Math.min(...vals);
+    const range=max-min||1;
+    const color = trend==='up' ? '#5FD068' : trend==='down' ? '#E0555A' : '#FFB000';
+    const pts = data.map((d,i)=>{
+      const x = pad.l + (i/(data.length-1))*iw;
+      const y = pad.t + ih - ((d.count-min)/range)*ih;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    const labels = data.filter((_,i)=>i%Math.max(1,Math.floor(data.length/6))===0 || i===data.length-1);
+    area.innerHTML = `<svg width="${w}" height="${h}" style="display:block;">
+      <!-- grid lines -->
+      <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${pad.t+ih}" stroke="#2A332A" stroke-width="1"/>
+      <line x1="${pad.l}" y1="${pad.t+ih}" x2="${pad.l+iw}" y2="${pad.t+ih}" stroke="#2A332A" stroke-width="1"/>
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- area fill -->
+      <polyline points="${pts} ${pad.l+iw},${pad.t+ih} ${pad.l},${pad.t+ih}" fill="${color}" opacity="0.08"/>
+      <!-- y axis labels -->
+      <text x="${pad.l-8}" y="${pad.t+4}" fill="#454E44" font-size="10" font-family="monospace" text-anchor="end">${max}</text>
+      <text x="${pad.l-8}" y="${pad.t+ih+4}" fill="#454E44" font-size="10" font-family="monospace" text-anchor="end">${min}</text>
+      ${labels.map(d=>`<text x="${pad.l+(data.indexOf(d)/(data.length-1))*iw}" y="${pad.t+ih+16}" fill="#454E44" font-size="10" font-family="monospace" text-anchor="middle">${d.bucket.split('T')[0]}</text>`).join('')}
+    </svg>`;
+  }
+
+  async function loadTrends(){
+    const meta = $('trends-meta'), status = $('trends-status');
+    if(!trendSkill){ status.textContent='Pick a skill.'; return; }
+    meta.innerHTML=''; status.textContent='Loading…';
+    try{
+      const d = await api('/api/v1/trends?skill='+encodeURIComponent(trendSkill)+'&interval='+encodeURIComponent(trendInterval)+'&months='+trendMonths);
+      renderTrendChart(d.data, d.trend);
+      const arrow = d.trend==='up'?'▲':d.trend==='down'?'▼':'—';
+      const arrowColor = d.trend==='up'?'#5FD068':d.trend==='down'?'#E0555A':'#6B7568';
+      meta.innerHTML = `<span style="color:var(--text)">${d.skill}</span> · <span style="color:${arrowColor}">${arrow}</span> ${d.total} postings over ${d.months}mo · ${d.data.length} buckets · interval: ${d.interval}`;
+    }catch(e){
+      $('trends-status').textContent = 'Failed: '+e.message;
+    }
+  }
+
+  function loadTrendChips(){
+    renderChips('trends-chips', (s)=>{ trendSkill=s; $('trends-input').value=s; loadTrends(); }, ['Python','SQL','Go','Rust','Kubernetes','Docker','AWS']);
+  }
     try{
       const h = await api(API.health);
       $('h-api').textContent = '● ' + h.status;
@@ -615,6 +692,7 @@
         document.getElementById(btn.dataset.tab).classList.add('active');
         if(btn.dataset.tab==='search') loadSkillChips();
         if(btn.dataset.tab==='graph') loadGraphChips();
+        if(btn.dataset.tab==='trends'){ loadTrendChips(); loadTrends(); }
       });
     });
 
@@ -631,6 +709,27 @@
 
     const si = $('search-input');
     if(si) si.addEventListener('keydown', e=>{ if(e.key==='Enter') doSearch(e.target.value.trim()); });
+
+    const ti = $('trends-input');
+    if(ti) ti.addEventListener('keydown', e=>{
+      if(e.key==='Enter'){ trendSkill=e.target.value.trim(); loadTrends(); }
+    });
+    document.querySelectorAll('.trend-int').forEach(b=>{
+      b.addEventListener('click',()=>{
+        document.querySelectorAll('.trend-int').forEach(x=>x.style.background='transparent');
+        b.style.background='#FFB000'; b.style.color='#000';
+        trendInterval = b.dataset.days==='1'?'1 day':b.dataset.days==='30'?'30 days':'7 days';
+        if(trendSkill) loadTrends();
+      });
+    });
+    document.querySelectorAll('.trend-mo').forEach(b=>{
+      b.addEventListener('click',()=>{
+        document.querySelectorAll('.trend-mo').forEach(x=>x.style.background='transparent');
+        b.style.background='#FFB000'; b.style.color='#000';
+        trendMonths = parseInt(b.dataset.mo);
+        if(trendSkill) loadTrends();
+      });
+    });
 
     loadSkills().then(()=>{
       loadSkillChips();
@@ -667,7 +766,10 @@
     <h3>[3] GRAPH — how skills connect</h3>
     <p>A network of which skills appear in the same postings. The <b>amber</b> node is the skill you searched; <b>green</b> nodes are skills that co-occur with it. Thicker lines = stronger connection. Click <b>OPEN FULLSCREEN</b> for an animated, draggable view.</p>
 
-    <h3>[4] SYSTEM — is it healthy?</h3>
+    <h3>[4] TRENDS — skill demand over time</h3>
+    <p>See how often a skill appears in postings over weeks or months. Type a skill or click a chip, then choose an interval (1D/7D/30D buckets) and range (3/6/12 months). The line chart shows posting count over time, and the trend arrow tells you if demand is <b style="color:#5FD068">rising</b>, <b style="color:#E0555A">falling</b>, or <b style="color:#6B7568">flat</b>. Hover the data points to see exact numbers.</p>
+
+    <h3>[5] SYSTEM — is it healthy?</h3>
     <p>Shows live status of the API, TimescaleDB, and the Redis bitmap index, plus the list of API endpoints powering everything.</p>
 
     <h3>The ticker up top</h3>

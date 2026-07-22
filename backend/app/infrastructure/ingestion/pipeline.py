@@ -207,8 +207,10 @@ async def run_pipeline(session: AsyncSession) -> dict[str, object]:
     # materialized data instead of scanning raw tables.
     try:
         await session.execute(
-            text("CALL refresh_continuous_aggregate("
-                 "'cooccurrence_30d', NOW() - INTERVAL '31 days', NOW())")
+            text(
+                "CALL refresh_continuous_aggregate("
+                "'cooccurrence_30d', NOW() - INTERVAL '31 days', NOW())"
+            )
         )
         await session.commit()
     except Exception as e:

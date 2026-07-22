@@ -21,6 +21,7 @@ from app.api.v1.pipeline import router as pipeline_router
 from app.api.v1.search import router as search_router
 from app.api.v1.signals import router as signals_router
 from app.api.v1.taxonomy import router as taxonomy_router
+from app.api.v1.trends import router as trends_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.infrastructure.cache.redis import close_redis
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:  # noqa: D103
     app.include_router(taxonomy_router, prefix="/api/v1", tags=["taxonomy"])
     app.include_router(graph_router, prefix="/api/v1", tags=["graph"])
     app.include_router(pipeline_router, prefix="/api/v1", tags=["ingestion"])
+    app.include_router(trends_router, prefix="/api/v1", tags=["trends"])
     app.include_router(metrics_router, prefix="/api/v1", tags=["monitoring"])
 
     static_dir = Path(__file__).parent / "static"

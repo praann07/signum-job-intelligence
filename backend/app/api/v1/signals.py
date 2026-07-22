@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import UTC, datetime
+from math import log
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
@@ -45,6 +48,7 @@ _RAW_QUERY = """
 async def signals(
     limit: int = Query(20, le=100),
     window_days: int = Query(30, le=365),
+    include_pmi: bool = Query(False),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, object]:
     # ponytail: for window <= 30 days, use the materialised CAGG (faster).
@@ -69,6 +73,19 @@ async def signals(
     else:
         rows = await session.execute(text(_RAW_QUERY), params)
 
+    # ponytail: fetch skill frequencies once for PMI computation
+    freq: dict[str, int] = {}
+    total_postings = 0
+    if include_pmi:
+        rows_freq = await session.execute(
+            text(
+                "SELECT skill, COUNT(DISTINCT event_id)::int AS freq FROM job_skills GROUP BY skill"
+            )
+        )
+        freq = {row[0]: row[1] for row in rows_freq}
+        r2 = await session.execute(text("SELECT COUNT(DISTINCT event_id)::int FROM job_skills"))
+        total_postings = r2.scalar() or 1
+
     now = datetime.now(UTC)
     scored = []
     for skill_a, skill_b, total, first, last, last7, recent in rows:
@@ -79,21 +96,28 @@ async def signals(
         velocity = recent - prior
         days_since = max((now - first).days, 1)
         novelty = 1.0 / (days_since + 1)
-        scored.append(
-            {
-                "skill_a": skill_a,
-                "skill_b": skill_b,
-                "pair_count": total,
-                "recent": recent,
-                "last7": last7,
-                "first_seen": first.isoformat(),
-                "last_seen": last.isoformat() if last else None,
-                "velocity": velocity,
-                "novelty": round(novelty, 4),
-                "breakout_score": score,
-                "from_cagg": use_cagg,
-            }
-        )
+        entry: dict[str, object] = {
+            "skill_a": skill_a,
+            "skill_b": skill_b,
+            "pair_count": total,
+            "recent": recent,
+            "last7": last7,
+            "first_seen": first.isoformat(),
+            "last_seen": last.isoformat() if last else None,
+            "velocity": velocity,
+            "novelty": round(novelty, 4),
+            "breakout_score": score,
+            "from_cagg": use_cagg,
+        }
+        if include_pmi and total_postings:
+            fa = freq.get(skill_a, 1)
+            fb = freq.get(skill_b, 1)
+            pmi = log(total * total_postings / (fa * fb)) if (fa * fb) else 0.0
+            entry["pmi"] = round(pmi, 4)
+        scored.append(entry)
 
     scored.sort(key=lambda r: r["breakout_score"], reverse=True)
-    return {"signals": scored[:limit], "total_pairs": len(scored)}
+    result: dict[str, object] = {"signals": scored[:limit], "total_pairs": len(scored)}
+    if include_pmi and scored:
+        result["pmi_total_pairs"] = total_postings
+    return result
